@@ -5,11 +5,12 @@ import { buildSkeleton, PART_IDS } from './skeleton.js';
 import { isMatch } from './match.js';
 
 const COLORS = {
-  bone: new THREE.Color('#E8E2D4'),
-  hover: new THREE.Color('#3D8BFD'),
-  accent: new THREE.Color('#0E7C86'),
+  bone: new THREE.Color('#DDD6C6'),
+  hover: new THREE.Color('#4F7CA3'),
+  accent: new THREE.Color('#2F6F73'),
 };
-const PART_PALETTE = ['#E69F00', '#56B4E9', '#009E73', '#F0E442', '#CC79A7', '#D55E00', '#0072B2'].map((c) => new THREE.Color(c));
+// Tlumené zemité tóny, aby se části odlišily, ale kostra nekřičela.
+const PART_PALETTE = ['#B0835A', '#6F8F7E', '#6E87A3', '#A5706A', '#8C8A5B', '#8E7C9E', '#5E8A87'].map((c) => new THREE.Color(c));
 // Malé části jdou ťuknout jen v izolované kosti.
 const SMALL_PARTS = new Set(['incisura_radialis', 'incisura_trochlearis', 'canalis_caroticus']);
 const PART_CODE = Object.fromEntries(PART_IDS.map((id, i) => [id, i]));
@@ -21,7 +22,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 stage.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
-scene.background = new THREE.Color('#E3E5E8');
+scene.background = new THREE.Color('#D3D6D9');
 const camera = new THREE.PerspectiveCamera(40, 1, 0.01, 50);
 scene.add(new THREE.HemisphereLight(0xffffff, 0x9aa0a8, 1.6));
 const sun = new THREE.DirectionalLight(0xffffff, 1.4);
@@ -34,6 +35,7 @@ controls.enableDamping = true;
 controls.minDistance = 0.08;
 controls.maxDistance = 5;
 controls.zoomToCursor = true;
+controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
 const ISO_DIR = new THREE.Vector3(0.45, 0.35, 1); // izolovaná kost: šikmý pohled zepředu
 
 const meshes = buildSkeleton(scene);
@@ -59,8 +61,10 @@ function loop(t) {
   if (camAnim) {
     const k = Math.min(1, (t - camAnim.start) / 450);
     const e = 1 - Math.pow(1 - k, 3);
-    camera.position.lerpVectors(camAnim.fromPos, camAnim.toPos, e);
     controls.target.lerpVectors(camAnim.fromTarget, camAnim.toTarget, e);
+    const q = new THREE.Quaternion().slerpQuaternions(new THREE.Quaternion(), camAnim.rot, e);
+    const d = THREE.MathUtils.lerp(camAnim.fromDist, camAnim.toDist, e);
+    camera.position.copy(controls.target).add(camAnim.fromDir.clone().applyQuaternion(q).multiplyScalar(d));
     if (k === 1) camAnim = null;
     needsRender = true;
   }
@@ -72,21 +76,114 @@ function loop(t) {
 }
 
 function flyTo(pos, target) {
+  const fromOff = camera.position.clone().sub(controls.target);
+  const toOff = pos.clone().sub(target);
+  const fromDir = fromOff.clone().normalize();
   camAnim = {
     start: performance.now(),
-    fromPos: camera.position.clone(), toPos: pos.clone(),
     fromTarget: controls.target.clone(), toTarget: target.clone(),
+    fromDir, rot: new THREE.Quaternion().setFromUnitVectors(fromDir, toOff.clone().normalize()),
+    fromDist: fromOff.length(), toDist: toOff.length(),
   };
 }
+
+const viewDist = (radius, pad, minDist) => {
+  const halfV = THREE.MathUtils.degToRad(camera.fov / 2);
+  const half = Math.min(halfV, Math.atan(Math.tan(halfV) * camera.aspect)); // na výšku telefonu omezuje šířka
+  return Math.max((radius * pad) / Math.sin(half), minDist);
+};
 
 // Natočí kameru na box, směr pohledu zachová.
 function frameBox(box3, pad = 1.4, minDist = 0.12, dir = null) {
   const sphere = box3.getBoundingSphere(new THREE.Sphere());
-  const halfV = THREE.MathUtils.degToRad(camera.fov / 2);
-  const half = Math.min(halfV, Math.atan(Math.tan(halfV) * camera.aspect)); // na výšku telefonu omezuje šířka
-  const dist = Math.max((sphere.radius * pad) / Math.sin(half), minDist);
+  const dist = viewDist(sphere.radius, pad, minDist);
   dir = (dir || camera.position.clone().sub(controls.target)).clone().normalize();
   flyTo(sphere.center.clone().add(dir.multiplyScalar(dist)), sphere.center);
+}
+
+// ---------- nejlepší pohled ----------
+// Zkusí směry kolem struktury a vybere ten, odkud ji ostatní kosti nejméně zakrývají; mírně preferuje `prefer`.
+const FRONT = new THREE.Vector3(0, 0.15, 1).normalize();
+const CANDIDATE_DIRS = [];
+for (const el of [0.15, 0.65, -0.45]) {
+  for (let a = 0; a < 8; a++) {
+    const az = (a / 8) * Math.PI * 2;
+    CANDIDATE_DIRS.push(new THREE.Vector3(Math.sin(az), el, Math.cos(az)).normalize());
+  }
+}
+const toSet = (x) => (x instanceof Set ? x : new Set(x));
+const rc = new THREE.Raycaster();
+
+function samplePoints(targets, center, max = 48) {
+  const all = [];
+  for (const m of targets.meshes) {
+    m.updateMatrixWorld();
+    const part = m.geometry.attributes.part.array;
+    for (let i = 0; i < part.length; i++) if (targets.code == null || part[i] === targets.code) all.push([m, i]);
+  }
+  const step = Math.max(1, Math.floor(all.length / max));
+  // body kousek dovnitř, aby paprsek netrefil jen hranu
+  return all.filter((_, k) => k % step === 0).slice(0, max).map(([m, i]) =>
+    new THREE.Vector3().fromBufferAttribute(m.geometry.attributes.position, i).applyMatrix4(m.matrixWorld).lerp(center, 0.05));
+}
+
+function visibleShare(targets, pts, eye) {
+  const pool = meshes.filter((m) => m.visible);
+  let ok = 0;
+  for (const p of pts) {
+    const to = p.clone().sub(eye);
+    const len = to.length();
+    rc.set(eye, to.divideScalar(len));
+    rc.far = len + 0.01;
+    const hit = rc.intersectObjects(pool, false)[0];
+    if (hit && targets.meshes.has(hit.object) && (targets.code == null || hit.object.geometry.attributes.part.array[hit.face.a] === targets.code)) ok++;
+  }
+  return ok / pts.length;
+}
+
+function bestDir(targets, focus, dist, prefer) {
+  const pts = samplePoints(targets, focus);
+  let best = prefer;
+  let bestScore = -Infinity;
+  for (const d of [prefer, ...CANDIDATE_DIRS]) {
+    const score = visibleShare(targets, pts, focus.clone().addScaledVector(d, dist)) + 0.25 * d.dot(prefer);
+    if (score > bestScore) { bestScore = score; best = d; }
+  }
+  return best;
+}
+
+// Šipka ukazuje na vybranou strukturu; kreslí se přes kosti.
+const arrowMat = new THREE.MeshBasicMaterial({ color: '#2F6F73', depthTest: false, transparent: true, opacity: 0.95 });
+const arrow = new THREE.Group();
+arrow.add(
+  new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.4, 16).rotateX(Math.PI).translate(0, 0.2, 0), arrowMat),
+  new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.6, 10).translate(0, 0.7, 0), arrowMat),
+);
+arrow.children.forEach((c) => { c.renderOrder = 10; });
+arrow.visible = false;
+scene.add(arrow);
+function hideArrow() { arrow.visible = false; requestRender(); }
+
+// Kamera na strukturu z nejlepšího směru. `box` = co má být celé vidět (u části celá kost),
+// `lift` posune strukturu nad kartu / panel odpovědí ve spodní části obrazovky.
+function frameOn(targets, { box = null, pad = 1.6, minDist = 0.3, prefer = FRONT, lift = 0.2 } = {}) {
+  const t = { meshes: toSet(targets.meshes), code: targets.code };
+  const focusBox = boxOf(t);
+  const focus = focusBox.getCenter(new THREE.Vector3());
+  const sphere = (box || focusBox).getBoundingSphere(new THREE.Sphere());
+  const dist = viewDist(sphere.radius, pad, minDist);
+  const dir = bestDir(t, focus, dist, prefer.clone().normalize());
+  const up = new THREE.Vector3(0, 1, 0).addScaledVector(dir, -dir.y).normalize();
+  const viewH = 2 * dist * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  const center = sphere.center.clone().addScaledVector(up, -lift * viewH);
+  flyTo(center.clone().addScaledVector(dir, dist), center);
+  // šipka shora (na obrazovce) míří na střed struktury
+  const r = focusBox.getBoundingSphere(new THREE.Sphere()).radius;
+  arrow.position.copy(focus).addScaledVector(up, Math.min(r * 0.6, viewH * 0.05));
+  arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), up);
+  arrow.scale.setScalar(viewH * 0.07);
+  arrow.visible = true;
+  requestRender();
 }
 
 // ---------- členství a cíle ----------
@@ -237,6 +334,7 @@ function show(screen) {
 
 function go(mode) {
   closeCard();
+  hideArrow();
   if (state.mode === 'isolate' && mode !== 'isolate') endIsolate(false);
   state.mode = mode;
   tint.hover = null;
@@ -273,10 +371,17 @@ function resetCamera(instant = false) {
 $('resetView').addEventListener('click', () => resetCamera());
 
 // ---------- karta ----------
-function openCard(t) {
+function openCard(t, { quiz: inQuiz = false } = {}) {
   state.card = t;
   tint.select = { meshes: t.meshes, code: t.code };
   paintAll();
+  if (state.mode === 'explore') {
+    const box = t.code == null ? null : boxOf({ meshes: [t.mesh], code: null });
+    const prefer = camera.position.clone().sub(controls.target); // zůstaň na straně, odkud uživatel ťukl
+    frameOn({ meshes: t.meshes, code: t.code }, { box, pad: 1.5, minDist: 0.35, prefer, lift: 0.2 });
+  }
+  $('cardBadge').hidden = !inQuiz;
+  $('cardClose').hidden = inQuiz;
   const it = t.item;
   $('cardLa').textContent = it.la;
   $('cardCz').textContent = it.cz;
@@ -299,17 +404,20 @@ function openCard(t) {
   parentEl.hidden = !label;
   $('cardFact').textContent = it.fact || '';
   $('cardFact').hidden = !it.fact;
-  $('cardIsolate').hidden = state.mode === 'isolate';
+  $('cardAction').textContent = inQuiz ? 'Další' : 'Izolovat kost';
+  $('cardAction').hidden = state.mode === 'isolate';
   $('card').hidden = false;
 }
 function closeCard() {
   $('card').hidden = true;
+  if (state.mode !== 'quiz') hideArrow();
   if (state.card) { state.card = null; tint.select = null; paintAll(); }
 }
 $('cardClose').addEventListener('click', closeCard);
 
 // ---------- izolace ----------
-$('cardIsolate').addEventListener('click', () => {
+$('cardAction').addEventListener('click', () => {
+  if (state.mode === 'quiz') { closeCard(); nextQuestion(); return; }
   const t = state.card;
   const it = t.item;
   const m = t.mesh;
@@ -328,6 +436,7 @@ function startIsolate(iso, title) {
   state.mode = 'isolate';
   $('exploreTitle').textContent = title;
   $('exploreBack').textContent = '‹ Zpět na kostru';
+  hideArrow();
   updatePartVisibility();
   frameBox(boxOf({ meshes: iso, code: null }), 1.25, 0.12, ISO_DIR);
 }
@@ -378,6 +487,7 @@ function nextQuestion() {
   frameQuiz(quiz.item);
   $('feedback').hidden = true;
   $('afterButtons').hidden = true;
+  $('answerPanel').hidden = false;
   if (difficulty === 'easy') renderOptions();
   else {
     $('hardInput').value = '';
@@ -387,10 +497,17 @@ function nextQuestion() {
   }
 }
 
-// V testu je vždy celá kostra; kamera ukáže celou kost (u části) s okolím.
+// V testu je vždy celá kostra; kamera se natočí tak, aby zvýrazněná struktura byla vidět (u části i celá kost).
 function frameQuiz(item) {
   const t = quizTargets(item);
-  frameBox(boxOf({ meshes: t.meshes, code: null }), 1.6, 0.8, new THREE.Vector3(0, 0.15, 1));
+  frameOn(t, { box: boxOf({ meshes: t.meshes, code: null }), pad: 1.6, minDist: 0.6, lift: 0.18 });
+}
+
+// Po správné odpovědi: karta jako v Prozkoumat (latinsky, česky, nadřazená struktura, zajímavost) + „Další“.
+function showQuizCard() {
+  const t = quizTargets(quiz.item);
+  $('answerPanel').hidden = true;
+  openCard({ item: quiz.item, mesh: t.meshes[0], meshes: new Set(t.meshes), code: t.code }, { quiz: true });
 }
 
 function updateStatus() {
@@ -452,11 +569,7 @@ function record(right) {
   if (right) {
     quiz.correct += 1;
     updateStatus();
-    const fb = $('feedback');
-    fb.innerHTML = '<span class="good">Správně!</span>';
-    fb.hidden = false;
-    if (difficulty === 'hard') $('hardForm').hidden = true;
-    setTimeout(() => { if (state.mode === 'quiz') nextQuestion(); }, 1000);
+    setTimeout(() => { if (state.mode === 'quiz') showQuizCard(); }, difficulty === 'easy' ? 400 : 0);
   } else {
     quiz.wrong.push(quiz.item);
     $('claimRight').hidden = true;
@@ -473,7 +586,7 @@ $('claimRight').addEventListener('click', () => {
   quiz.answered += 1;
   quiz.correct += 1;
   updateStatus();
-  nextQuestion();
+  showQuizCard();
 });
 $('quizReset').addEventListener('click', () => frameQuiz(quiz.item));
 
