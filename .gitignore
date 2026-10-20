@@ -1,0 +1,6 @@
+slides/
+*.pdf
+raw/
+node_modules/
+dist/
+.wrangler/
