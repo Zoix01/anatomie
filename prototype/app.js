@@ -1,16 +1,19 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { ITEMS, BY_ID, GENERIC_PARENT } from './data.js?v=4';
-import { buildSkeleton, PART_IDS } from './skeleton.js?v=4';
-import { isMatch } from './match.js?v=4';
+import { ITEMS, BY_ID, GENERIC_PARENT } from './data.js?v=5';
+import { buildSkeleton, PART_IDS } from './skeleton.js?v=5';
+import { isMatch } from './match.js?v=5';
 
 const COLORS = {
-  bone: new THREE.Color('#DDD6C6'),
-  hover: new THREE.Color('#4F7CA3'),
-  accent: new THREE.Color('#2F6F73'),
+  bone: new THREE.Color('#EBE2CC'),
+  hover: new THREE.Color('#E2B59A'),
+  select: new THREE.Color('#B77466'),
+  accent: new THREE.Color('#B77466'),
 };
-// Tlumené zemité tóny, aby se části odlišily, ale kostra nekřičela.
-const PART_PALETTE = ['#B0835A', '#6F8F7E', '#6E87A3', '#A5706A', '#8C8A5B', '#8E7C9E', '#5E8A87'].map((c) => new THREE.Color(c));
+// Jemné pískové a béžové tóny: části se odliší, ale kost zůstane klidná.
+const PART_PALETTE = ['#D9C49C', '#B7B09E', '#D6B19A', '#C2B48F', '#CFC6B1', '#C7A88C', '#ADA48A'].map((c) => new THREE.Color(c));
+// Kolik barvy zvýraznění se přimíchá do podkladu (0 = nic, 1 = plná barva).
+const MIX = { hover: 0.5, select: 0.6, quiz: 0.85 };
 // Malé části jdou ťuknout jen v izolované kosti.
 const SMALL_PARTS = new Set(['incisura_radialis', 'incisura_trochlearis', 'canalis_caroticus']);
 const PART_CODE = Object.fromEntries(PART_IDS.map((id, i) => [id, i]));
@@ -18,14 +21,14 @@ const $ = (id) => document.getElementById(id);
 
 // ---------- 3D scéna ----------
 const stage = $('stage');
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); // pozadí = CSS přechod pod plátnem
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 stage.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
-scene.background = new THREE.Color('#D3D6D9');
+scene.background = null;
 const camera = new THREE.PerspectiveCamera(40, 1, 0.01, 50);
-scene.add(new THREE.HemisphereLight(0xffffff, 0x9aa0a8, 1.6));
-const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+scene.add(new THREE.HemisphereLight(0xfff4e2, 0xb39d84, 1.7)); // teplé světlo, ať kosti nešednou
+const sun = new THREE.DirectionalLight(0xfff1dc, 1.3);
 sun.position.set(1, 2, 3);
 camera.add(sun);
 scene.add(camera);
@@ -153,7 +156,7 @@ function bestDir(targets, focus, dist, prefer) {
 }
 
 // Šipka ukazuje na vybranou strukturu; kreslí se přes kosti.
-const arrowMat = new THREE.MeshBasicMaterial({ color: '#2F6F73', depthTest: false, transparent: true, opacity: 0.95 });
+const arrowMat = new THREE.MeshBasicMaterial({ color: '#8F5446', depthTest: false, transparent: true, opacity: 0.95 });
 const arrow = new THREE.Group();
 arrow.add(
   new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.4, 16).rotateX(Math.PI).translate(0, 0.2, 0), arrowMat),
@@ -166,7 +169,14 @@ function hideArrow() { arrow.visible = false; requestRender(); }
 
 // Kamera na strukturu z nejlepšího směru. `box` = co má být celé vidět (u části celá kost),
 // `lift` posune strukturu nad kartu / panel odpovědí ve spodní části obrazovky.
-function frameOn(targets, { box = null, pad = 1.6, minDist = 0.3, prefer = FRONT, lift = 0.2 } = {}) {
+// Kde na obrazovce leží karta / panel, aby je struktura nezakryla. Na širokém displeji je karta vpravo.
+const isWide = () => window.innerWidth >= 900;
+function overlayOffset(kind) {
+  if (isWide()) return kind === 'card' ? { lift: 0, shift: 0.16 } : { lift: 0.1, shift: 0 };
+  return { lift: kind === 'card' ? 0.2 : 0.16, shift: 0 };
+}
+
+function frameOn(targets, { box = null, pad = 1.6, minDist = 0.3, prefer = FRONT, lift = 0.2, shift = 0 } = {}) {
   const t = { meshes: toSet(targets.meshes), code: targets.code };
   const focusBox = boxOf(t);
   const focus = focusBox.getCenter(new THREE.Vector3());
@@ -175,7 +185,8 @@ function frameOn(targets, { box = null, pad = 1.6, minDist = 0.3, prefer = FRONT
   const dir = bestDir(t, focus, dist, prefer.clone().normalize());
   const up = new THREE.Vector3(0, 1, 0).addScaledVector(dir, -dir.y).normalize();
   const viewH = 2 * dist * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-  const center = sphere.center.clone().addScaledVector(up, -lift * viewH);
+  const right = new THREE.Vector3().crossVectors(up, dir).normalize();
+  const center = sphere.center.clone().addScaledVector(up, -lift * viewH).addScaledVector(right, shift * viewH * camera.aspect);
   flyTo(center.clone().addScaledVector(dir, dist), center);
   // šipka shora (na obrazovce) míří na střed struktury
   const r = focusBox.getBoundingSphere(new THREE.Sphere()).radius;
@@ -232,13 +243,18 @@ function partColor(mesh, code) {
 function paint(mesh) {
   const col = mesh.geometry.attributes.color;
   const part = mesh.geometry.attributes.part.array;
-  const showParts = partsShown.has(mesh);
-  const layers = [tint.quiz && { ...tint.quiz, c: COLORS.accent }, tint.select && { ...tint.select, c: COLORS.hover }, tint.hover && { ...tint.hover, c: COLORS.hover }]
-    .filter((l) => l && l.meshes.has(mesh));
+  // Když je něco vybrané, barevné části má jen vybraná kost; ostatní jsou jednobarevné.
+  const showParts = partsShown.has(mesh) && (!tint.select || tint.select.meshes.has(mesh));
+  const layers = [
+    tint.quiz && { ...tint.quiz, c: COLORS.accent, k: MIX.quiz },
+    tint.select && { ...tint.select, c: COLORS.select, k: MIX.select },
+    tint.hover && { ...tint.hover, c: COLORS.hover, k: MIX.hover },
+  ].filter((l) => l && l.meshes.has(mesh));
+  const c = new THREE.Color();
   for (let i = 0; i < part.length; i++) {
     const code = part[i];
-    let c = showParts && code >= 0 ? partColor(mesh, code) : COLORS.bone;
-    for (const l of layers) if (l.code == null || l.code === code) { c = l.c; break; }
+    c.copy(showParts && code >= 0 ? partColor(mesh, code) : COLORS.bone);
+    for (const l of layers) if (l.code == null || l.code === code) { c.lerp(l.c, l.k); break; }
     col.setXYZ(i, c.r, c.g, c.b);
   }
   col.needsUpdate = true;
@@ -293,6 +309,7 @@ function pick(clientX, clientY) {
 
 const sameTarget = (a, b) => a && b && a.item === b.item && a.mesh === b.mesh;
 function setHover(t) {
+  stage.classList.toggle('pointing', !!t);
   if (sameTarget(t, tint.hover) || (!t && !tint.hover)) return;
   tint.hover = t;
   paintAll();
@@ -379,7 +396,7 @@ function openCard(t, { quiz: result = null, yours = null } = {}) {
   if (state.mode === 'explore') {
     const box = t.code == null ? null : boxOf({ meshes: [t.mesh], code: null });
     const prefer = camera.position.clone().sub(controls.target); // zůstaň na straně, odkud uživatel ťukl
-    frameOn({ meshes: t.meshes, code: t.code }, { box, pad: 1.5, minDist: 0.35, prefer, lift: 0.2 });
+    frameOn({ meshes: t.meshes, code: t.code }, { box, pad: 2, minDist: 0.45, prefer, ...overlayOffset('card') });
   }
   const badge = $('cardBadge');
   badge.hidden = !inQuiz;
@@ -508,13 +525,14 @@ function nextQuestion() {
     $('hardInput').disabled = false;
     $('hardSubmit').disabled = true;
     $('hardForm').hidden = false;
+    if (matchMedia('(hover: hover)').matches) $('hardInput').focus(); // na telefonu by klávesnice zakryla kostru
   }
 }
 
 // V testu je vždy celá kostra; kamera se natočí tak, aby zvýrazněná struktura byla vidět (u části i celá kost).
 function frameQuiz(item) {
   const t = quizTargets(item);
-  frameOn(t, { box: boxOf({ meshes: t.meshes, code: null }), pad: 1.6, minDist: 0.6, lift: 0.18 });
+  frameOn(t, { box: boxOf({ meshes: t.meshes, code: null }), pad: 2.2, minDist: 0.7, ...overlayOffset('quiz') });
 }
 
 // Po odpovědi (správné i špatné): karta jako v Prozkoumat (latinsky, česky, nadřazená struktura, zajímavost) + „Další“.
@@ -525,7 +543,7 @@ function showQuizCard(result, yours = null) {
 }
 
 function updateStatus() {
-  $('quizStatus').textContent = `Otázka ${quiz.n} · ${quiz.correct} správně`;
+  $('quizStatus').innerHTML = `Otázka ${quiz.n} · <b>${quiz.correct}</b> správně`;
 }
 
 // Špatné možnosti: stejný druh a co nejblíž (části téže kosti, kosti téže oblasti).
@@ -539,20 +557,23 @@ function distractors(item) {
 function renderOptions() {
   const box = $('easyAnswers');
   box.innerHTML = '';
-  for (const opt of shuffle([quiz.item, ...distractors(quiz.item)])) {
+  box.classList.remove('locked');
+  shuffle([quiz.item, ...distractors(quiz.item)]).forEach((opt, i) => {
     const b = document.createElement('button');
     b.className = 'btn';
-    b.textContent = opt.la;
+    b.dataset.id = opt.id;
+    b.append(Object.assign(document.createElement('span'), { className: 'key', textContent: i + 1 }), opt.la);
     b.addEventListener('click', () => {
       if (quiz.locked) return;
       quiz.locked = true;
+      box.classList.add('locked');
       const right = opt === quiz.item;
       b.classList.add(right ? 'ok' : 'bad');
-      if (!right) [...box.children].find((x) => x.textContent === quiz.item.la).classList.add('ok');
+      if (!right) box.querySelector(`[data-id="${quiz.item.id}"]`).classList.add('ok');
       record(right);
     });
     box.append(b);
-  }
+  });
 }
 
 $('hardInput').addEventListener('input', (e) => { $('hardSubmit').disabled = !e.target.value.trim(); });
@@ -600,6 +621,7 @@ function showResults() {
   const pct = Math.round((quiz.correct / quiz.answered) * 100);
   $('score').textContent = `${quiz.correct} z ${quiz.answered}`;
   $('percent').textContent = `${pct} % správně`;
+  $('meterFill').style.width = `${pct}%`;
   const list = $('reviewList');
   list.innerHTML = '';
   const unique = [...new Set(quiz.wrong)];
@@ -607,7 +629,9 @@ function showResults() {
   for (const it of unique) {
     const li = document.createElement('li');
     const b = document.createElement('button');
-    b.append(Object.assign(document.createElement('i'), { textContent: it.la }), ` – ${it.cz}`);
+    const label = document.createElement('span');
+    label.append(Object.assign(document.createElement('i'), { textContent: it.la }), ` – ${it.cz}`);
+    b.append(label);
     b.addEventListener('click', () => reviewInExplore(it));
     li.append(b);
     list.append(li);
@@ -629,3 +653,17 @@ function reviewInExplore(it) {
 resize();
 paintAll();
 requestAnimationFrame(loop);
+
+// Klávesnice na počítači: 1–4 = odpověď, Enter = Další, Esc = zavřít kartu.
+window.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT' && e.key !== 'Escape') return;
+  const cardOpen = !$('card').hidden;
+  if (state.mode === 'quiz' && cardOpen && (e.key === 'Enter' || e.key === ' ')) {
+    e.preventDefault();
+    $('cardAction').click();
+  } else if (state.mode === 'quiz' && difficulty === 'easy' && /^[1-4]$/.test(e.key)) {
+    $('easyAnswers').children[Number(e.key) - 1]?.click();
+  } else if (e.key === 'Escape' && cardOpen && state.mode !== 'quiz') {
+    closeCard();
+  }
+});
