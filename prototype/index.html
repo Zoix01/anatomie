@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Anatomie</title>
   <meta name="description" content="Latinské názvy kostí a jejich částí na 3D kostře.">
-  <link rel="stylesheet" href="style.css?v=3">
+  <link rel="stylesheet" href="style.css?v=4">
   <script type="importmap">
     {
       "imports": {
@@ -39,12 +39,16 @@
   <!-- 3. Karta struktury -->
   <div id="card" class="sheet" hidden>
     <button class="close" id="cardClose" aria-label="Zavřít">×</button>
-    <p class="badge" id="cardBadge" hidden>Správně!</p>
+    <p class="badge" id="cardBadge" hidden></p>
     <h2 class="la" id="cardLa"></h2>
     <p class="cz" id="cardCz"></p>
     <p class="meta" id="cardParent"></p>
     <p class="fact" id="cardFact"></p>
-    <button class="btn primary" id="cardAction">Izolovat kost</button>
+    <p class="meta" id="cardYours" hidden></p>
+    <div class="after">
+      <button class="btn" id="cardClaim" hidden>Měl/a jsem pravdu</button>
+      <button class="btn primary" id="cardAction">Izolovat kost</button>
+    </div>
   </div>
 
   <!-- 5. Test – nastavení -->
@@ -77,11 +81,6 @@
         <input id="hardInput" type="text" placeholder="Napiš latinský název" autocomplete="off" autocapitalize="off" spellcheck="false">
         <button class="btn primary" id="hardSubmit" type="submit" disabled>Odeslat</button>
       </form>
-      <div id="feedback" class="feedback" hidden></div>
-      <div id="afterButtons" class="after" hidden>
-        <button class="btn" id="claimRight" hidden>Měl/a jsem pravdu</button>
-        <button class="btn primary" id="nextQ">Další</button>
-      </div>
     </div>
   </section>
 
@@ -100,6 +99,6 @@
 
   <div id="loading" class="loading" hidden>Načítám kostru… <span id="loadPct">0</span> %</div>
 
-  <script type="module" src="app.js?v=3"></script>
+  <script type="module" src="app.js?v=4"></script>
 </body>
 </html>

@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { ITEMS, BY_ID, GENERIC_PARENT } from './data.js?v=3';
-import { buildSkeleton, PART_IDS } from './skeleton.js?v=3';
-import { isMatch } from './match.js?v=3';
+import { ITEMS, BY_ID, GENERIC_PARENT } from './data.js?v=4';
+import { buildSkeleton, PART_IDS } from './skeleton.js?v=4';
+import { isMatch } from './match.js?v=4';
 
 const COLORS = {
   bone: new THREE.Color('#DDD6C6'),
@@ -370,7 +370,9 @@ function resetCamera(instant = false) {
 $('resetView').addEventListener('click', () => resetCamera());
 
 // ---------- karta ----------
-function openCard(t, { quiz: inQuiz = false } = {}) {
+// quiz: 'right' | 'wrong' = karta po odpovědi v testu; yours = co uživatel napsal (Těžká, špatně).
+function openCard(t, { quiz: result = null, yours = null } = {}) {
+  const inQuiz = !!result;
   state.card = t;
   tint.select = { meshes: t.meshes, code: t.code };
   paintAll();
@@ -379,8 +381,16 @@ function openCard(t, { quiz: inQuiz = false } = {}) {
     const prefer = camera.position.clone().sub(controls.target); // zůstaň na straně, odkud uživatel ťukl
     frameOn({ meshes: t.meshes, code: t.code }, { box, pad: 1.5, minDist: 0.35, prefer, lift: 0.2 });
   }
-  $('cardBadge').hidden = !inQuiz;
+  const badge = $('cardBadge');
+  badge.hidden = !inQuiz;
+  badge.textContent = result === 'wrong' ? 'Špatně – správně je:' : 'Správně!';
+  badge.classList.toggle('wrong', result === 'wrong');
   $('cardClose').hidden = inQuiz;
+  const yoursEl = $('cardYours');
+  yoursEl.innerHTML = '';
+  if (yours) yoursEl.append('Tvoje odpověď: ', Object.assign(document.createElement('i'), { textContent: yours }));
+  yoursEl.hidden = !yours;
+  $('cardClaim').hidden = !yours;
   const it = t.item;
   $('cardLa').textContent = it.la;
   $('cardCz').textContent = it.cz;
@@ -420,7 +430,12 @@ $('cardClose').addEventListener('click', closeCard);
 
 // ---------- izolace ----------
 $('cardAction').addEventListener('click', () => {
-  if (state.mode === 'quiz') { closeCard(); nextQuestion(); return; }
+  if (state.mode === 'quiz') {
+    if (quiz.pendingWrong) { quiz.pendingWrong = false; quiz.answered += 1; quiz.wrong.push(quiz.item); }
+    closeCard();
+    nextQuestion();
+    return;
+  }
   const t = state.card;
   const it = t.item;
   const m = t.mesh;
@@ -486,8 +501,6 @@ function nextQuestion() {
   tint.quiz = { meshes: new Set(t.meshes), code: t.code };
   paintAll();
   frameQuiz(quiz.item);
-  $('feedback').hidden = true;
-  $('afterButtons').hidden = true;
   $('answerPanel').hidden = false;
   if (difficulty === 'easy') renderOptions();
   else {
@@ -504,11 +517,11 @@ function frameQuiz(item) {
   frameOn(t, { box: boxOf({ meshes: t.meshes, code: null }), pad: 1.6, minDist: 0.6, lift: 0.18 });
 }
 
-// Po správné odpovědi: karta jako v Prozkoumat (latinsky, česky, nadřazená struktura, zajímavost) + „Další“.
-function showQuizCard() {
+// Po odpovědi (správné i špatné): karta jako v Prozkoumat (latinsky, česky, nadřazená struktura, zajímavost) + „Další“.
+function showQuizCard(result, yours = null) {
   const t = quizTargets(quiz.item);
   $('answerPanel').hidden = true;
-  openCard({ item: quiz.item, mesh: t.meshes[0], meshes: new Set(t.meshes), code: t.code }, { quiz: true });
+  openCard({ item: quiz.item, mesh: t.meshes[0], meshes: new Set(t.meshes), code: t.code }, { quiz: result, yours });
 }
 
 function updateStatus() {
@@ -550,19 +563,9 @@ $('hardForm').addEventListener('submit', (e) => {
   quiz.locked = true;
   $('hardInput').disabled = true;
   if (isMatch(val, quiz.item)) return record(true);
-  const fb = $('feedback');
-  fb.innerHTML = '';
-  const line = (label, text) => {
-    const p = document.createElement('div');
-    p.append(label + ' ', Object.assign(document.createElement('i'), { textContent: text }));
-    return p;
-  };
-  fb.append(line('Tvoje odpověď:', val.trim()), line('Správně:', quiz.item.la));
-  fb.hidden = false;
-  $('hardForm').hidden = true;
-  $('claimRight').hidden = false;
-  $('afterButtons').hidden = false;
+  // Chyba se započítá až po „Další“; „Měl/a jsem pravdu“ ji změní na správnou odpověď.
   quiz.pendingWrong = true;
+  showQuizCard('wrong', val.trim());
 });
 
 function record(right) {
@@ -570,24 +573,20 @@ function record(right) {
   if (right) {
     quiz.correct += 1;
     updateStatus();
-    setTimeout(() => { if (state.mode === 'quiz') showQuizCard(); }, difficulty === 'easy' ? 400 : 0);
   } else {
     quiz.wrong.push(quiz.item);
-    $('claimRight').hidden = true;
-    $('afterButtons').hidden = false;
   }
+  // V Lehké chvilka na zelené/červené tlačítko, pak karta.
+  setTimeout(() => { if (state.mode === 'quiz') showQuizCard(right ? 'right' : 'wrong'); }, difficulty === 'easy' ? 500 : 0);
 }
 
-$('nextQ').addEventListener('click', () => {
-  if (quiz.pendingWrong) { quiz.pendingWrong = false; quiz.answered += 1; quiz.wrong.push(quiz.item); }
-  nextQuestion();
-});
-$('claimRight').addEventListener('click', () => {
+$('cardClaim').addEventListener('click', () => {
   quiz.pendingWrong = false;
   quiz.answered += 1;
   quiz.correct += 1;
   updateStatus();
-  showQuizCard();
+  closeCard();
+  nextQuestion();
 });
 $('quizReset').addEventListener('click', () => frameQuiz(quiz.item));
 
