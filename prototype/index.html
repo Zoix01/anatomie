@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Anatomie</title>
+  <meta name="description" content="Latinské názvy kostí a jejich částí na 3D kostře.">
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="stage"></div>
+  <div class="proto-badge">PROTOTYP · zástupné tvary</div>
+
+  <!-- 1. Úvod -->
+  <section id="home" class="screen page active">
+    <div class="home-inner">
+      <h1>Anatomie</h1>
+      <p class="sub">Latinské názvy kostí a jejich částí</p>
+      <button class="btn primary big" data-go="explore">Prozkoumat kostru</button>
+      <button class="btn big" data-go="setup">Test</button>
+    </div>
+  </section>
+
+  <!-- 2. Prozkoumat + 4. Izolovaná kost (sdílí 3D scénu) -->
+  <section id="explore" class="screen overlay">
+    <header class="bar">
+      <button class="link" id="exploreBack">‹ Zpět</button>
+      <span class="bar-title" id="exploreTitle">Prozkoumat</span>
+      <span class="bar-spacer"></span>
+    </header>
+    <p class="hint" id="zoomHint">Přibliž kost a uvidíš její části.</p>
+    <button class="round" id="resetView" aria-label="Výchozí pohled">⟲</button>
+  </section>
+
+  <!-- 3. Karta struktury -->
+  <div id="card" class="sheet" hidden>
+    <button class="close" id="cardClose" aria-label="Zavřít">×</button>
+    <h2 class="la" id="cardLa"></h2>
+    <p class="cz" id="cardCz"></p>
+    <p class="meta" id="cardParent"></p>
+    <p class="fact" id="cardFact"></p>
+    <button class="btn primary" id="cardIsolate">Izolovat kost</button>
+  </div>
+
+  <!-- 5. Test – nastavení -->
+  <section id="setup" class="screen page">
+    <header class="bar">
+      <button class="link" data-go="home">‹ Zpět</button>
+      <span class="bar-title">Test</span>
+      <span class="bar-spacer"></span>
+    </header>
+    <div class="page-inner">
+      <p class="label">Vyber obtížnost</p>
+      <button class="tile selected" data-diff="easy"><b>Lehká</b><span>vybíráš ze 4 možností</span></button>
+      <button class="tile" data-diff="hard"><b>Těžká</b><span>píšeš latinský název</span></button>
+      <button class="btn primary big" id="startQuiz">Začít test</button>
+    </div>
+  </section>
+
+  <!-- 6. Test – „Co je zvýrazněno?“ -->
+  <section id="quiz" class="screen overlay">
+    <header class="bar">
+      <span class="bar-title left" id="quizStatus">Otázka 1 · 0 správně</span>
+      <span class="bar-spacer"></span>
+      <button class="link" id="quizEnd">Ukončit</button>
+    </header>
+    <p class="question">Co je zvýrazněno?</p>
+    <button class="round" id="quizReset" aria-label="Výchozí pohled">⟲</button>
+    <div class="answer-panel" id="answerPanel">
+      <div id="easyAnswers" class="options"></div>
+      <form id="hardForm" class="hard" hidden>
+        <input id="hardInput" type="text" placeholder="Napiš latinský název" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button class="btn primary" id="hardSubmit" type="submit" disabled>Odeslat</button>
+      </form>
+      <div id="feedback" class="feedback" hidden></div>
+      <div id="afterButtons" class="after" hidden>
+        <button class="btn" id="claimRight" hidden>Měl/a jsem pravdu</button>
+        <button class="btn primary" id="nextQ">Další</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7. Výsledky -->
+  <section id="results" class="screen page">
+    <div class="page-inner">
+      <h1>Hotovo!</h1>
+      <p class="score" id="score"></p>
+      <p class="sub" id="percent"></p>
+      <p class="label" id="reviewLabel">Zopakuj si:</p>
+      <ul class="review" id="reviewList"></ul>
+      <button class="btn primary big" data-go="setup">Nový test</button>
+      <button class="btn big" data-go="home">Domů</button>
+    </div>
+  </section>
+
+  <div id="loading" class="loading" hidden>Načítám kostru… <span id="loadPct">0</span> %</div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
