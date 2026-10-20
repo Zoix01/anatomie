@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { ITEMS, BY_ID, GENERIC_PARENT } from './data.js';
-import { buildSkeleton, PART_IDS } from './skeleton.js';
-import { isMatch } from './match.js';
+import { ITEMS, BY_ID, GENERIC_PARENT } from './data.js?v=3';
+import { buildSkeleton, PART_IDS } from './skeleton.js?v=3';
+import { isMatch } from './match.js?v=3';
 
 const COLORS = {
   bone: new THREE.Color('#DDD6C6'),
@@ -341,7 +341,6 @@ function go(mode) {
   if (mode !== 'quiz') tint.quiz = null;
   if (mode === 'explore') {
     show('explore');
-    $('exploreTitle').textContent = 'Prozkoumat';
     $('exploreBack').textContent = '‹ Zpět';
   } else if (mode === 'home' || mode === 'setup' || mode === 'results') {
     show(mode);
@@ -406,7 +405,11 @@ function openCard(t, { quiz: inQuiz = false } = {}) {
   $('cardFact').hidden = !it.fact;
   $('cardAction').textContent = inQuiz ? 'Další' : 'Izolovat kost';
   $('cardAction').hidden = state.mode === 'isolate';
-  $('card').hidden = false;
+  const card = $('card');
+  card.hidden = false;
+  card.classList.remove('slide-in');
+  void card.offsetWidth;
+  card.classList.add('slide-in');
 }
 function closeCard() {
   $('card').hidden = true;
@@ -434,7 +437,6 @@ function startIsolate(iso, title) {
   const set = new Set(iso);
   meshes.forEach((m) => { m.visible = set.has(m); });
   state.mode = 'isolate';
-  $('exploreTitle').textContent = title;
   $('exploreBack').textContent = '‹ Zpět na kostru';
   hideArrow();
   updatePartVisibility();
@@ -448,7 +450,6 @@ function endIsolate(toExplore) {
   if (toExplore) {
     closeCard();
     state.mode = 'explore';
-    $('exploreTitle').textContent = 'Prozkoumat';
     $('exploreBack').textContent = '‹ Zpět';
     updatePartVisibility();
     paintAll();

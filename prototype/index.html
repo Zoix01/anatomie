@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Anatomie</title>
   <meta name="description" content="Latinské názvy kostí a jejich částí na 3D kostře.">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=3">
   <script type="importmap">
     {
       "imports": {
@@ -31,11 +31,7 @@
 
   <!-- 2. Prozkoumat + 4. Izolovaná kost (sdílí 3D scénu) -->
   <section id="explore" class="screen overlay">
-    <header class="bar">
-      <button class="link" id="exploreBack">‹ Zpět</button>
-      <span class="bar-title" id="exploreTitle">Prozkoumat</span>
-      <span class="bar-spacer"></span>
-    </header>
+    <button class="float-back" id="exploreBack">‹ Zpět</button>
     <p class="hint" id="zoomHint">Přibliž kost a uvidíš její části.</p>
     <button class="round" id="resetView" aria-label="Výchozí pohled">⟲</button>
   </section>
@@ -104,6 +100,6 @@
 
   <div id="loading" class="loading" hidden>Načítám kostru… <span id="loadPct">0</span> %</div>
 
-  <script type="module" src="app.js"></script>
+  <script type="module" src="app.js?v=3"></script>
 </body>
 </html>

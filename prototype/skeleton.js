@@ -2,7 +2,7 @@
 // Každá kost = jeden mesh; části kostí = atribut `part` na vrcholech (index do PART_IDS, -1 = žádná).
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { ITEMS } from './data.js';
+import { ITEMS } from './data.js?v=3';
 
 export const PART_IDS = ITEMS.filter((it) => it.kind === 'part').map((it) => it.id);
 const PART_CODE = Object.fromEntries(PART_IDS.map((id, i) => [id, i]));
