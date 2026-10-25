@@ -28,10 +28,18 @@ stage.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = null;
 const camera = new THREE.PerspectiveCamera(40, 1, 0.01, 50);
-scene.add(new THREE.HemisphereLight(0xfff4e2, 0xb39d84, 1.7)); // teplé světlo, ať kosti nešednou
+const hemi = new THREE.HemisphereLight(0xfff4e2, 0xb39d84, 1.7); // teplé světlo, ať kosti nešednou
+scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff1dc, 1.3);
 sun.position.set(1, 2, 3);
 camera.add(sun);
+// Izolovaná kost: méně rozptýleného světla a silnější světlo zboku, ať jsou vidět hrbolky a jamky.
+function setIsoLight(on) {
+  hemi.intensity = on ? 0.9 : 1.7;
+  sun.intensity = on ? 2.6 : 1.3;
+  sun.position.set(...(on ? [-2.5, 1.5, 1] : [1, 2, 3]));
+  requestRender();
+}
 scene.add(camera);
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -574,6 +582,7 @@ function startIsolate(iso, title) {
   state.mode = 'isolate';
   $('exploreBack').textContent = '‹ Zpět na kostru';
   hideArrow();
+  setIsoLight(true);
   updatePartVisibility();
   frameMeshes(iso, 1.12, 0.12, ISO_DIR);
   // Kost v plném rozlišení se dotáhne na pozadí a vymění za zjednodušenou.
@@ -594,6 +603,7 @@ function startIsolate(iso, title) {
 
 function endIsolate(toExplore) {
   state.isoToken = null;
+  setIsoLight(false);
   $('isoLoading').hidden = true;
   for (const m of state.isolated || []) {
     if (m.userData.lowGeo) { m.geometry = m.userData.lowGeo; delete m.userData.lowGeo; }

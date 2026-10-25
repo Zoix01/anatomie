@@ -165,7 +165,7 @@ h1 { font-size: 36px; margin: 0 0 4px; color: var(--text); letter-spacing: -0.01
 .hard .btn { width: auto; }
 
 /* Výsledky */
-.score { font-size: 48px; font-weight: 800; margin: 8px 0 0; color: var(--accent); font-variant-numeric: tabular-nums; }
+.score { font-size: 48px; font-weight: 700; margin: 8px 0 0; color: var(--accent); font-variant-numeric: tabular-nums; }
 .meter { height: 10px; border-radius: 999px; background: #F1DFC7; overflow: hidden; }
 .meter span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--peach), var(--accent)); }
 .review { list-style: none; margin: 0 0 12px; padding: 0; }
