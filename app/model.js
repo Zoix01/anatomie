@@ -3,11 +3,13 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { ITEMS } from './data.js?v=7';
+import { ITEMS } from './data.js?v=8';
 
 export const PART_IDS = ITEMS.filter((it) => it.kind === 'part').map((it) => it.id);
 const PART_CODE = Object.fromEntries(PART_IDS.map((id, i) => [id, i]));
-export const MODEL_URL = 'model/skeleton.glb?v=7';
+const MODEL_VERSION = 8;
+export const MODEL_URL = `model/skeleton.glb?v=${MODEL_VERSION}`;
+const CARTILAGE = new THREE.Color('#F2EBDB');
 
 // Komprimované pozice (Int16 + měřítko v uzlu) převedeme na obyčejné souřadnice ve světě,
 // aby raycasting, rámování kamery a barvení pracovaly s jednou soustavou.
@@ -27,39 +29,63 @@ function bakeToWorld(mesh) {
   return geo;
 }
 
+// Geometrie z glTF uzlu + atributy, se kterými aplikace počítá (část kosti, barva vrcholů).
+function prepare(src) {
+  const x = src.userData || {};
+  const geo = bakeToWorld(src);
+  const n = geo.attributes.position.count;
+  // část kosti na vrcholech (index do PART_IDS, −1 = žádná); kost hrudní je ze tří těles = rovnou části
+  geo.setAttribute('part', new THREE.BufferAttribute(new Float32Array(n).fill(x.part ? PART_CODE[x.part] : -1), 1));
+  geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+  return geo;
+}
+
+const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+
 export async function loadSkeleton(scene, onProgress) {
-  const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   const gltf = await loader.loadAsync(MODEL_URL, (e) => { if (e.total) onProgress?.(e.loaded / e.total); });
   const meshes = [];
   const sources = [];
   gltf.scene.traverse((o) => { if (o.isMesh) sources.push(o); });
   for (const src of sources) {
     const x = src.userData || {};
-    const geo = bakeToWorld(src);
-    const n = geo.attributes.position.count;
-    // část kosti na vrcholech (index do PART_IDS, −1 = žádná); kost hrudní je ze tří těles = rovnou části
-    const part = new Float32Array(n).fill(x.part ? PART_CODE[x.part] : -1);
-    geo.setAttribute('part', new THREE.BufferAttribute(part, 1));
-    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0 });
-    const mesh = new THREE.Mesh(geo, mat);
+    const mesh = new THREE.Mesh(prepare(src), mat);
     mesh.name = src.name;
     mesh.userData = {
+      fma: x.fma,
       item: x.item,
       groups: x.groups || [],
       side: x.side,
       decor: x.decor || null,
+      extra: !!x.extra,
+      ribOf: x.ribOf || null, // chrupavka: FMA svého žebra
+      ribGroup: x.ribGroup || null, // společná chrupavka 8.–10. žebra
       isRib: !!x.rib,
       isVertebra: !!x.vertebra,
       hasParts: !!x.part,
     };
-    if (x.decor) {
+    if (x.decor === 'teeth') {
       mat.vertexColors = false;
-      mat.color.set(x.decor === 'teeth' ? '#F4EFE3' : '#C9D2D6');
-      if (x.decor === 'cartilage') { mat.transparent = true; mat.opacity = 0.75; }
+      mat.color.set('#F4EFE3');
+    } else if (x.decor === 'cartilage') {
+      mesh.userData.base = CARTILAGE; // o odstín světlejší než kost, ať je vidět, kde žebro končí
     }
     scene.add(mesh);
     meshes.push(mesh);
   }
   return meshes;
+}
+
+// Kost v plném rozlišení (model/detail/<FMA>.glb) pro izolaci; null, když soubor není.
+const detailCache = new Map();
+export function loadDetail(fma) {
+  if (!detailCache.has(fma)) {
+    detailCache.set(fma, loader.loadAsync(`model/detail/${fma}.glb?v=${MODEL_VERSION}`).then((gltf) => {
+      let src = null;
+      gltf.scene.traverse((o) => { if (o.isMesh) src = o; });
+      return src && prepare(src);
+    }).catch(() => null));
+  }
+  return detailCache.get(fma);
 }

@@ -35,7 +35,8 @@ h1 { font-size: 36px; margin: 0 0 4px; color: var(--text); letter-spacing: -0.01
   position: fixed; inset: 0;
   background: radial-gradient(ellipse at 50% 40%, #F3E6D4 0%, #E3CDB4 60%, #CDB297 100%);
 }
-#stage canvas { display: block; touch-action: none; }
+#stage canvas { display: block; touch-action: none; opacity: 0; transition: opacity .8s; }
+#stage.ready canvas { opacity: 1; }
 #stage.pointing canvas { cursor: pointer; }
 
 .screen { position: fixed; inset: 0; display: none; }
@@ -49,12 +50,9 @@ h1 { font-size: 36px; margin: 0 0 4px; color: var(--text); letter-spacing: -0.01
   width: 100%; max-width: 480px; margin: 0 auto;
   padding: 16px; display: flex; flex-direction: column; gap: 12px;
 }
-.home-inner { margin: auto; text-align: center; }
-.home-mark {
-  width: 72px; height: 72px; margin: 0 auto 12px; border-radius: 22px;
-  background: linear-gradient(135deg, var(--peach-light), var(--peach));
-  display: grid; place-items: center; box-shadow: var(--shadow);
-}
+/* Úvod: kostra se otáčí v horní části, nadpis a tlačítka dole na světlém podkladu. */
+.home { background: linear-gradient(0deg, var(--bg) 0%, var(--bg) 30%, rgba(255, 247, 234, 0) 55%); }
+.home-inner { margin: auto auto 0; text-align: center; padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 .sub { color: var(--muted); margin: 0 0 20px; }
 
 /* Lišta jen na stránkách bez 3D (nastavení testu). */

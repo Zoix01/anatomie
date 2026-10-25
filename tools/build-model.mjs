@@ -1,5 +1,6 @@
-// Postaví app/model/skeleton.glb z BodyParts3D 3.0 (obj_95) + kostrč ze Z-Anatomy + vygenerované sezamské kosti ruky.
-//   node build-model.mjs            (vyžaduje raw/bp3d/BodyParts3D_3.0_obj_95.zip a raw/zanatomy/*.obj)
+// Postaví app/model/skeleton.glb (celá kostra, zjednodušená) a app/model/detail/<FMA>.glb (každá kost v plném rozlišení)
+// z BodyParts3D 3.0 (obj_95 = nejpodrobnější zveřejněná verze).
+//   node build-model.mjs            (vyžaduje raw/bp3d/BodyParts3D_3.0_obj_95.zip)
 // Souřadnice: BodyParts3D = mm, Z nahoru, levá strana x > 0, záda y > 0.
 //             Aplikace     = m,  Y nahoru, obličej k +Z, nohy na y = 0.  (x, y, z) → (x, z, −y) / 1000
 import fs from 'node:fs';
@@ -18,6 +19,7 @@ const ZIP = path.join(RAW, 'bp3d', 'BodyParts3D_3.0_obj_95.zip');
 // Rozbalené OBJ mimo projekt – složka projektu je v OneDrive a zbytečně by se synchronizovaly.
 const OBJ_DIR = process.env.BP3D_OBJ_DIR || path.join(os.tmpdir(), 'anatomie-bp3d-obj');
 const OUT = path.join(ROOT, 'app', 'model', 'skeleton.glb');
+const DETAIL_DIR = path.join(ROOT, 'app', 'model', 'detail');
 const TRI_BUDGET = Number(process.env.TRI_BUDGET || 300_000); // celý model; telefony zvládnou ~300k trojúhelníků
 
 // ---------- výběr těles ----------
@@ -65,60 +67,106 @@ function bbox(pos) {
 
 const meshes = parts.map((h) => ({ ...h, ...readObj(h.file, fromBP3D) }));
 
-// ---------- kostrč ze Z-Anatomy, zarovnaná podle kosti křížové ----------
-// Z-Anatomy vychází z BodyParts3D, ale je v metrech, posunutá a jinak natočená (Z nahoru, záda = +y).
-const fromZA = (x, y, z) => [x, z, -y];
-const zaSacrum = readObj(path.join(RAW, 'zanatomy', 'sacrum.obj'), fromZA);
-const bpSacrum = meshes.find((m) => m.spec.item === 'os_sacrum');
-const a = bbox(zaSacrum.pos);
-const b = bbox(bpSacrum.pos);
-const scale = b.size.map((s, i) => s / a.size[i]);
-console.log('Kost křížová Z-Anatomy → BodyParts3D, poměr velikostí x/y/z:', scale.map((s) => s.toFixed(3)).join(' / '));
-// Na výšku se kosti křížové liší (jiný tvar horního okraje), proto měřítko z šířky a hloubky
-// a svisle zarovnáme dolní konec (apex), kam kostrč nasedá.
-const s = (scale[0] + scale[2]) / 2;
-const zaToBp = (x, y, z) => {
-  const [X, Y, Z] = fromZA(x, y, z);
-  return [(X - a.center[0]) * s + b.center[0], (Y - a.min[1]) * s + b.min[1], (Z - a.center[2]) * s + b.center[2]];
-};
-const coccyx = readObj(path.join(RAW, 'zanatomy', 'coccyx.obj'), zaToBp);
-// Po převodu zůstává mezi kostrčí a apexem ~5 mm a kostrč vypadá odtržená. Rohy kostrče (cornua) ve skutečnosti
-// sahají vzhůru k rohům kosti křížové, proto ji zvedneme tak, aby se obalové boxy mírně překrývaly.
-const JOINT_GAP = -0.0025;
-const lift = b.min[1] - JOINT_GAP - bbox(coccyx.pos).max[1];
-for (let i = 1; i < coccyx.pos.length; i += 3) coccyx.pos[i] += lift;
-console.log(`Kostrč posunuta nahoru o ${(lift * 1000).toFixed(1)} mm`);
-meshes.push({ id: 'ZA-coccyx', name: 'coccyx (Z-Anatomy)', spec: { item: 'os_coccygis', side: null, source: 'Z-Anatomy' }, ...coccyx });
-
-// ---------- sezamské kosti ruky (v BodyParts3D ani Z-Anatomy nejsou) ----------
-// Dvě malá zploštělá „hrášková“ tělíska na dlaňové straně hlavice 1. záprstní kosti.
-function ellipsoid(center, radii, seg = 10) {
-  const pos = [];
-  const idx = [];
-  for (let i = 0; i <= seg; i++) {
-    const th = (i / seg) * Math.PI;
-    for (let j = 0; j <= seg; j++) {
-      const ph = (j / seg) * Math.PI * 2;
-      pos.push(center[0] + radii[0] * Math.sin(th) * Math.cos(ph), center[1] + radii[1] * Math.cos(th), center[2] + radii[2] * Math.sin(th) * Math.sin(ph));
+// ---------- kostrč: v BodyParts3D je součástí tělesa „sacrum“ ----------
+// Kost křížová z BodyParts3D je ~145 mm vysoká; dolních ~33 mm jsou srostlé obratle kostrče.
+// Rozřízneme ji v nejužším místě (art. sacrococcygea) a díry po řezu zavřeme.
+function sliceByY(m, cutY) {
+  // Trojúhelníky přes rovinu řezu rozdělíme přesně na ní, takže okraj řezu je rovinný a víčko je hladké.
+  const pos = [...m.pos];
+  const n0 = m.pos.length / 3;
+  const above = (v) => pos[v * 3 + 1] >= cutY;
+  const cutVert = new Map(); // hrana → nový vrchol na rovině
+  const onPlane = (a, b) => {
+    const key = a < b ? `${a}_${b}` : `${b}_${a}`;
+    if (!cutVert.has(key)) {
+      const t = (cutY - pos[a * 3 + 1]) / (pos[b * 3 + 1] - pos[a * 3 + 1]);
+      cutVert.set(key, pos.length / 3);
+      for (let k = 0; k < 3; k++) pos.push(pos[a * 3 + k] + t * (pos[b * 3 + k] - pos[a * 3 + k]));
     }
+    return cutVert.get(key);
+  };
+  const up = [];
+  const down = [];
+  for (let t = 0; t < m.idx.length; t += 3) {
+    const tri = [m.idx[t], m.idx[t + 1], m.idx[t + 2]];
+    const flags = tri.map(above);
+    const nUp = flags.filter(Boolean).length;
+    if (nUp === 3) { up.push(...tri); continue; }
+    if (nUp === 0) { down.push(...tri); continue; }
+    // osamělý vrchol L a zbylé P, Q v pořadí trojúhelníku (zachová orientaci)
+    const lone = nUp === 1 ? flags.indexOf(true) : flags.indexOf(false);
+    const [L, P, Q] = [tri[lone], tri[(lone + 1) % 3], tri[(lone + 2) % 3]];
+    const i1 = onPlane(L, P);
+    const i2 = onPlane(L, Q);
+    const [loneSide, pairSide] = nUp === 1 ? [up, down] : [down, up];
+    loneSide.push(L, i1, i2);
+    pairSide.push(i1, P, Q, i1, Q, i2);
   }
-  for (let i = 0; i < seg; i++) {
-    for (let j = 0; j < seg; j++) {
-      const p = i * (seg + 1) + j;
-      idx.push(p, p + 1, p + seg + 1, p + 1, p + seg + 2, p + seg + 1);
+  const edgeKey = (a, b) => a * 4194304 + b;
+  const origEdges = new Set();
+  for (let t = 0; t < m.idx.length; t += 3) for (let k = 0; k < 3; k++) origEdges.add(edgeKey(m.idx[t + k], m.idx[t + (k + 1) % 3]));
+  const piece = (tris) => {
+    // nové okraje = hrany bez protějšku, které nebyly okrajem už v původní síti
+    const own = new Set();
+    for (let t = 0; t < tris.length; t += 3) for (let k = 0; k < 3; k++) own.add(edgeKey(tris[t + k], tris[t + (k + 1) % 3]));
+    const next = new Map();
+    for (let t = 0; t < tris.length; t += 3) {
+      for (let k = 0; k < 3; k++) {
+        const a = tris[t + k], b = tris[t + (k + 1) % 3];
+        const wasBorder = a < n0 && b < n0 && !origEdges.has(edgeKey(b, a));
+        if (!own.has(edgeKey(b, a)) && !wasBorder) next.set(a, b);
+      }
     }
-  }
-  return { pos: new Float32Array(pos), idx: new Uint32Array(idx) };
+    const out = [...pos];
+    const capped = [...tris];
+    const seen = new Set();
+    for (const start of next.keys()) {
+      if (seen.has(start)) continue;
+      const loop = [];
+      for (let v = start; v !== undefined && !seen.has(v); v = next.get(v)) { seen.add(v); loop.push(v); }
+      const c = [0, 0, 0];
+      for (const v of loop) for (let k = 0; k < 3; k++) c[k] += pos[v * 3 + k] / loop.length;
+      const ci = out.length / 3;
+      out.push(...c);
+      for (let k = 0; k < loop.length; k++) capped.push(loop[(k + 1) % loop.length], loop[k], ci);
+    }
+    // jen použité vrcholy
+    const remap = new Map();
+    const p2 = [];
+    const i2 = capped.map((v) => {
+      if (!remap.has(v)) { remap.set(v, p2.length / 3); p2.push(out[v * 3], out[v * 3 + 1], out[v * 3 + 2]); }
+      return remap.get(v);
+    });
+    return { pos: new Float32Array(p2), idx: new Uint32Array(i2) };
+  };
+  return [piece(up), piece(down)];
 }
-for (const side of ['R', 'L']) {
-  const mc1 = meshes.find((m) => m.spec.side === side && /first metacarpal/.test(m.name));
-  if (!mc1) continue;
-  const bb = bbox(mc1.pos);
-  // hlavice = distální (dolní) konec; dlaň = přední strana (+z) u visící ruky
-  const head = [bb.center[0], bb.min[1] + 0.006, bb.max[2]];
-  for (const dx of [-0.004, 0.004]) {
-    meshes.push({ id: `GEN-sesamoid-${side}`, name: 'hand sesamoid (generated)', spec: { item: 'sesamoidea_manus', side, source: 'generated' },
-      ...ellipsoid([head[0] + dx, head[1], head[2] - 0.001], [0.0028, 0.0035, 0.0022]) });
+const sacrum = meshes.find((m) => m.spec.item === 'os_sacrum');
+{
+  const bb = bbox(sacrum.pos);
+  // nejužší vodorovný řez 25–42 mm nad apexem kostrče (mezi S5 a Co1)
+  let cutY = 0, best = Infinity;
+  for (let y = bb.min[1] + 0.025; y < bb.min[1] + 0.042; y += 0.0005) {
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < sacrum.pos.length; i += 3) {
+      if (Math.abs(sacrum.pos[i + 1] - y) < 0.0005) { lo = Math.min(lo, sacrum.pos[i]); hi = Math.max(hi, sacrum.pos[i]); }
+    }
+    if (hi - lo < best) { best = hi - lo; cutY = y; }
+  }
+  const [upper, lower] = sliceByY(sacrum, cutY);
+  console.log(`Kostrč odříznuta ${((cutY - bb.min[1]) * 1000).toFixed(1)} mm nad apexem (šířka řezu ${(best * 1000).toFixed(1)} mm)`);
+  Object.assign(sacrum, upper);
+  meshes.push({ id: `${sacrum.id}-coccyx`, name: 'coccyx (part of BodyParts3D sacrum)', spec: { item: 'os_coccygis', side: null }, ...lower });
+}
+
+// ---------- žeberní chrupavky patří ke svému žebru ----------
+for (const m of meshes.filter((x) => x.spec.decor === 'cartilage')) {
+  const ord = m.name.match(/(first|second|third|fourth|fifth|sixth|seventh) costal cartilage/);
+  if (ord) {
+    const rib = meshes.find((r) => r.spec.rib && r.spec.side === m.spec.side && splitSide(r.name).bare === `${ord[1]} rib`);
+    m.spec.ribOf = rib.id;
+  } else {
+    m.spec.ribGroup = 'costae_spuriae'; // společná chrupavka 8.–10. žebra (oblouk žeberní)
   }
 }
 
@@ -130,12 +178,10 @@ for (const m of meshes) for (let i = 1; i < m.pos.length; i += 3) m.pos[i] -= mi
 // ---------- glTF ----------
 await MeshoptSimplifier.ready;
 await MeshoptEncoder.ready;
-const doc = new Document();
-doc.createBuffer();
-const scene = doc.createScene('skeleton');
-const material = doc.createMaterial('bone').setBaseColorFactor([0.92, 0.89, 0.8, 1]).setRoughnessFactor(0.8);
 const totalTris = meshes.reduce((n, m) => n + m.idx.length / 3, 0);
 console.log(`Trojúhelníků v BodyParts3D: ${totalTris.toLocaleString('cs')}, cíl ${TRI_BUDGET.toLocaleString('cs')}`);
+// plné rozlišení si schováme pro detailní soubory (izolovaná kost)
+for (const m of meshes) m.full = { pos: m.pos, idx: m.idx };
 
 // Rozpočet po kostech: stejný poměr pro všechny, ale aspoň MIN_TRIS, aby malé kůstky nepřišly o tvar.
 const MIN_TRIS = 600;
@@ -175,38 +221,45 @@ function vertexNormals(pos, idx) {
   return n;
 }
 
-for (const m of meshes) {
-  const prim = doc.createPrimitive()
-    .setAttribute('POSITION', doc.createAccessor().setType('VEC3').setArray(m.pos))
-    .setAttribute('NORMAL', doc.createAccessor().setType('VEC3').setArray(vertexNormals(m.pos, m.idx)))
-    .setIndices(doc.createAccessor().setType('SCALAR').setArray(m.idx))
-    .setMaterial(material);
-  const mesh = doc.createMesh(m.name).addPrimitive(prim);
-  const extras = { item: m.spec.item ?? null, side: m.spec.side ?? null, groups: m.spec.groups ?? [], fma: m.id };
-  if (m.spec.decor) extras.decor = m.spec.decor;
-  if (m.spec.part) extras.part = m.spec.part;
-  if (m.spec.vertebra) extras.vertebra = true;
-  if (m.spec.rib) extras.rib = true;
-  if (m.spec.source) extras.source = m.spec.source;
-  const node = doc.createNode(`${m.spec.item || m.spec.decor}_${m.spec.side || 'M'}_${m.id}`).setMesh(mesh).setExtras(extras);
-  scene.addChild(node);
+const CREDITS = 'BodyParts3D, © The Database Center for Life Science, CC BY-SA 2.1 JP. Upraveno (výběr, rozdělení kosti křížové a kostrče, zjednodušení).';
+const io = new NodeIO().registerExtensions([EXTMeshoptCompression, KHRMeshQuantization]).registerDependencies({ 'meshopt.encoder': MeshoptEncoder });
+
+async function writeGlb(list, out, geo) {
+  const doc = new Document();
+  doc.createBuffer();
+  const scene = doc.createScene('skeleton');
+  const material = doc.createMaterial('bone').setBaseColorFactor([0.92, 0.89, 0.8, 1]).setRoughnessFactor(0.8);
+  for (const m of list) {
+    const { pos, idx } = geo(m);
+    const prim = doc.createPrimitive()
+      .setAttribute('POSITION', doc.createAccessor().setType('VEC3').setArray(pos))
+      .setAttribute('NORMAL', doc.createAccessor().setType('VEC3').setArray(vertexNormals(pos, idx)))
+      .setIndices(doc.createAccessor().setType('SCALAR').setArray(idx))
+      .setMaterial(material);
+    const mesh = doc.createMesh(m.name).addPrimitive(prim);
+    const extras = { item: m.spec.item ?? null, side: m.spec.side ?? null, groups: m.spec.groups ?? [], fma: m.id };
+    for (const k of ['decor', 'part', 'vertebra', 'rib', 'extra', 'ribOf', 'ribGroup']) if (m.spec[k]) extras[k] = m.spec[k];
+    scene.addChild(doc.createNode(`${m.spec.item || m.spec.decor}_${m.spec.side || 'M'}_${m.id}`).setMesh(mesh).setExtras(extras));
+  }
+  await doc.transform(dedup(), prune(), reorder({ encoder: MeshoptEncoder }), quantize({ quantizePosition: 14, quantizeNormal: 10 }));
+  doc.createExtension(KHRMeshQuantization).setRequired(true);
+  doc.createExtension(EXTMeshoptCompression).setRequired(true).setEncoderOptions({ method: EXTMeshoptCompression.EncoderMethod.QUANTIZE });
+  doc.getRoot().getAsset().extras = { credits: CREDITS };
+  fs.mkdirSync(path.dirname(out), { recursive: true });
+  await io.write(out, doc);
+  return doc.getRoot().listMeshes().reduce((n, me) => n + me.listPrimitives().reduce((k, p) => k + p.getIndices().getCount() / 3, 0), 0);
 }
 
-await doc.transform(
-  dedup(),
-  prune(),
-  reorder({ encoder: MeshoptEncoder }),
-  quantize({ quantizePosition: 14, quantizeNormal: 10 }),
-);
-const outTris = doc.getRoot().listMeshes().reduce((n, me) => n + me.listPrimitives().reduce((k, p) => k + p.getIndices().getCount() / 3, 0), 0);
+const outTris = await writeGlb(meshes, OUT, (m) => m);
 console.log(`Po zjednodušení: ${outTris.toLocaleString('cs')} trojúhelníků v ${meshes.length} tělesech`);
-
-doc.createExtension(KHRMeshQuantization).setRequired(true);
-doc.createExtension(EXTMeshoptCompression).setRequired(true).setEncoderOptions({ method: EXTMeshoptCompression.EncoderMethod.QUANTIZE });
-doc.getRoot().getAsset().extras = {
-  credits: 'BodyParts3D, © The Database Center for Life Science, CC BY-SA 2.1 JP; os coccygis: Z-Anatomy, CC BY-SA 4.0; ossa sesamoidea manus: vlastní model. Upraveno (výběr, zjednodušení).',
-};
-fs.mkdirSync(path.dirname(OUT), { recursive: true });
-const io = new NodeIO().registerExtensions([EXTMeshoptCompression, KHRMeshQuantization]).registerDependencies({ 'meshopt.encoder': MeshoptEncoder });
-await io.write(OUT, doc);
 console.log(`Hotovo: ${path.relative(ROOT, OUT)} (${(fs.statSync(OUT).size / 1e6).toFixed(2)} MB)`);
+
+// Každá kost zvlášť v plném rozlišení (zuby a chrupavky se neizolují).
+fs.rmSync(DETAIL_DIR, { recursive: true, force: true });
+let detailBytes = 0;
+for (const m of meshes.filter((x) => !x.spec.decor)) {
+  const out = path.join(DETAIL_DIR, `${m.id}.glb`);
+  await writeGlb([m], out, (x) => x.full);
+  detailBytes += fs.statSync(out).size;
+}
+console.log(`Detaily: ${path.relative(ROOT, DETAIL_DIR)} (${meshes.filter((x) => !x.spec.decor).length} souborů, celkem ${(detailBytes / 1e6).toFixed(1)} MB)`);

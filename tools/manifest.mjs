@@ -1,7 +1,8 @@
 // Která BodyParts3D tělesa jdou do modelu a jak se mapují na položky aplikace (app/data.js).
 // Pravidla se porovnávají s anglickým názvem bez strany („left humerus“ → „humerus“).
 // item = nejmenší položka, kterou mesh znamená; groups = nadřazené skupiny (od menší k větší).
-// decor = jen vizuální (zuby, žeberní chrupavky) – nejde na ně ťuknout ani nejsou v testu.
+// decor = jen vizuální (zuby, žeberní chrupavky) – nejsou v testu; chrupavka při ťuknutí vybere své žebro.
+// extra = kost, která není na slidech: jde na ni ťuknout (název), ale v testu není.
 
 const NEURO = ['neurocranium'];
 const SPLANCH = ['splanchnocranium'];
@@ -48,6 +49,7 @@ export const RULES = [
   [/^mandible$/, { item: 'mandibula', groups: SPLANCH }],
   [/^vomer$/, { item: 'septum_nasi', groups: SPLANCH }],
   [/^inferior nasal concha$/, { item: 'conchae_nasales', groups: SPLANCH }],
+  [/^palatine bone$/, { item: 'os_palatinum', groups: SPLANCH, extra: true }],
   [/^hyoid bone$/, { item: 'os_hyoideum' }],
   [/(upper|lower) .*secondary .*tooth$/, { decor: 'teeth' }],
 

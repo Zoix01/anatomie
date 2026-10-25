@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Anatomie</title>
   <meta name="description" content="Latinské názvy kostí a jejich částí na 3D kostře.">
-  <!-- 3D model: BodyParts3D, © The Database Center for Life Science (CC BY-SA 2.1 JP); os coccygis: Z-Anatomy (CC BY-SA 4.0). Odvozený model: CC BY-SA 4.0. Viz README. -->
+  <!-- 3D model: BodyParts3D, © The Database Center for Life Science (CC BY-SA 2.1 JP). Odvozený model: CC BY-SA 4.0. Viz README. -->
   <meta name="dcterms.license" content="https://creativecommons.org/licenses/by-sa/4.0/">
-  <link rel="stylesheet" href="style.css?v=7">
+  <link rel="stylesheet" href="style.css?v=8">
   <script type="importmap">
     {
       "imports": {
@@ -20,10 +20,9 @@
 <body>
   <div id="stage"></div>
 
-  <!-- 1. Úvod -->
-  <section id="home" class="screen page active">
+  <!-- 1. Úvod (nad ním se otáčí kostra) -->
+  <section id="home" class="screen home active">
     <div class="home-inner">
-      <div class="home-mark"><svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true"><path fill="#FFFDF8" stroke="#957C62" stroke-width="2" stroke-linejoin="round" d="M12.5 7.5a4 4 0 0 0-7 3.6 4 4 0 0 0 3.6 6.9l13.4 13.4a4 4 0 0 0 6.9 3.6 4 4 0 0 0 3.6-7L19.6 14.6A4 4 0 0 0 16 8a4 4 0 0 0-3.5-.5z"/></svg></div>
       <h1>Anatomie</h1>
       <p class="sub">Latinské názvy kostí a jejich částí</p>
       <button class="btn primary big" data-go="explore">Prozkoumat kostru</button>
@@ -35,6 +34,7 @@
   <section id="explore" class="screen overlay">
     <button class="float-back" id="exploreBack">‹ Zpět</button>
     <p class="hint" id="zoomHint" hidden>Přibliž kost a uvidíš její části.</p>
+    <p class="hint" id="isoLoading" hidden>Načítám podrobný model…</p>
     <button class="round" id="resetView" aria-label="Výchozí pohled">⟲</button>
   </section>
 
@@ -99,6 +99,6 @@
 
   <div id="loading" class="loading" hidden><p>Načítám kostru… <span id="loadPct">0</span> %</p></div>
 
-  <script type="module" src="app.js?v=7"></script>
+  <script type="module" src="app.js?v=8"></script>
 </body>
 </html>

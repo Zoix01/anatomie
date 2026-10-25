@@ -2,6 +2,8 @@
 // kind: bone = samostatná kost (1+ meshů), part = oblast na kosti, group = skupina kostí.
 // parent u části = id kosti, nebo obecně 'vertebra' / 'costa' / 'basis_cranii'.
 // groupOf = nadřazená skupina („Patří do:“ na kartě). variants = tvary ze slidů, které test uzná.
+// extra = kost, která na slidech není: v modelu jde ťuknout a ukáže název, v testu nikdy není.
+// Ossa sesamoidea manus (slide 34) v modelu nejsou: žádný ověřený 3D model je neobsahuje.
 
 export const ITEMS = [
   // ---------- Horní končetina ----------
@@ -43,7 +45,6 @@ export const ITEMS = [
   { id: 'ossa_metacarpi', kind: 'group', region: 'hk', la: 'ossa metacarpi', cz: 'záprstní kosti', variants: ['metakarpy'], fact: '5 kostí.' },
   { id: 'phalanges_manus', kind: 'group', region: 'hk', la: 'phalanges manus', cz: 'články prstů ruky', variants: ['phalanges'], fact: 'Palec má 2 články, ostatní prsty 3.' },
   { id: 'pollex', kind: 'group', groupOf: 'phalanges_manus', region: 'hk', la: 'pollex', cz: 'palec ruky', variants: ['pollux'], fact: 'Genitiv pollicis – např. m. flexor pollicis longus.' },
-  { id: 'sesamoidea_manus', kind: 'group', region: 'hk', la: 'ossa sesamoidea manus', cz: 'sezamské kosti ruky', variants: ['ossa sesamoidea'], fact: 'Vznikají kostnatěním ve šlaše.' },
 
   // ---------- Dolní končetina ----------
   { id: 'os_coxae', kind: 'bone', region: 'dk', la: 'os coxae', cz: 'kost pánevní', fact: 'Vzniká srůstem tří kostí mezi 15. a 18. rokem.' },
@@ -75,7 +76,7 @@ export const ITEMS = [
   { id: 'calcaneus', kind: 'bone', groupOf: 'ossa_tarsi', region: 'dk', la: 'calcaneus', cz: 'kost patní', fact: 'Upíná se na ni Achillova šlacha.' },
   { id: 'ossa_tarsi', kind: 'group', region: 'dk', la: 'ossa tarsi', cz: 'zánártní kosti', variants: ['tarsy'], fact: '7 kostí.' },
   { id: 'ossa_metatarsi', kind: 'group', region: 'dk', la: 'ossa metatarsi', cz: 'nártní kosti', variants: ['metatarsy'], fact: '5 kostí.' },
-  { id: 'phalanges_pedis', kind: 'group', region: 'dk', la: 'phalanges pedis', cz: 'články prstců nohy', variants: ['phalanges'], fact: 'Palec nohy má 2 články, ostatní prstce 3.' },
+  { id: 'phalanges_pedis', kind: 'group', region: 'dk', la: 'phalanges pedis', cz: 'články prstů nohy', variants: ['phalanges'], fact: 'Palec nohy má 2 články, ostatní prsty 3.' },
   { id: 'hallux', kind: 'group', groupOf: 'phalanges_pedis', region: 'dk', la: 'hallux', cz: 'palec nohy', fact: 'Genitiv hallucis – např. m. flexor hallucis longus.' },
   { id: 'sesamoidea_pedis', kind: 'group', region: 'dk', la: 'ossa sesamoidea pedis', cz: 'sezamské kosti nohy', variants: ['ossa sesamoidea'], fact: 'Obvykle dvě, pod hlavicí 1. nártní kosti.' },
 
@@ -96,6 +97,7 @@ export const ITEMS = [
   { id: 'os_zygomaticum', kind: 'bone', groupOf: 'splanchnocranium', region: 'lebka', la: 'os zygomaticum', cz: 'kost lícní' },
   { id: 'maxilla', kind: 'bone', groupOf: 'splanchnocranium', region: 'lebka', la: 'maxilla', cz: 'horní čelist', fact: 'Obsahuje sinus maxillaris.' },
   { id: 'mandibula', kind: 'bone', groupOf: 'splanchnocranium', region: 'lebka', la: 'mandibula', cz: 'dolní čelist', fact: 'Jediná pohyblivá kost lebky.' },
+  { id: 'os_palatinum', kind: 'bone', groupOf: 'splanchnocranium', region: 'lebka', extra: true, la: 'os palatinum', cz: 'kost patrová' },
   { id: 'os_hyoideum', kind: 'bone', region: 'lebka', la: 'os hyoideum', cz: 'jazylka', variants: ['jazylka'], fact: 'Je na ní zavěšen hrtan; nekloubí se s žádnou kostí.' },
   { id: 'septum_nasi', kind: 'group', groupOf: 'splanchnocranium', region: 'lebka', la: 'septum nasi osseum', cz: 'kostěná nosní přepážka', fact: 'Tvoří ji vomer (latinsky „radlice“) a kolmá ploténka kosti čichové.' },
   { id: 'conchae_nasales', kind: 'group', groupOf: 'splanchnocranium', region: 'lebka', la: 'conchae nasales', cz: 'nosní skořepy', fact: 'Víří a ohřívají vdechovaný vzduch.' },

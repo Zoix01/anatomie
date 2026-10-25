@@ -69,7 +69,7 @@ Fun fact sources:
 |G|ossa metacarpi *(„metakarpy“, „záprstí“)*|ossium metacarpi|záprstní kosti|—|21,34|[s34] 5 kostí.|
 |G|phalanges manus *(„články prstů – phalanges“)*|phalangum|články prstů ruky|—|21,34|[s21] Palec má 2 články, ostatní prsty 3.|
 |G|pollex *(slide: „pollux“)*|pollicis|palec ruky|—|34|[s34] Genitiv pollicis – např. m. flexor pollicis longus.|
-|G|ossa sesamoidea manus|ossium sesamoideorum|sezamské kosti ruky|—|34|[pozn.] Vznikají kostnatěním ve šlaše.|
+|~~G~~|~~ossa sesamoidea manus~~ *(2026-10-25: vyřazeno – žádný ověřený 3D model je neobsahuje)*|—|sezamské kosti ruky|—|34|—|
 
 ### Dolní končetina
 | | Latin (TA) | gen. | Czech | parent | slide | fun fact |
@@ -103,7 +103,7 @@ Fun fact sources:
 |B|calcaneus|calcanei|kost patní|ossa tarsi|55,56,57|[s57] Upíná se na ni Achillova šlacha.|
 |G|ossa tarsi *(„tarsy – 7 kostí“)*|ossium tarsi|zánártní kosti|—|55|[s55] 7 kostí.|
 |G|ossa metatarsi *(„metatarsy“)*|ossium metatarsi|nártní kosti|—|55|[uč.] 5 kostí.|
-|G|phalanges pedis *(„články prstců“)*|phalangum|články prstců nohy|—|55|[uč.] Palec nohy má 2 články, ostatní prstce 3.|
+|G|phalanges pedis *(„články prstců“)*|phalangum|články prstů nohy|—|55|[uč.] Palec nohy má 2 články, ostatní prsty 3.|
 |G|hallux *(„hallux (hallucis)“)*|hallucis|palec nohy|—|55|[s55] Genitiv hallucis – např. m. flexor hallucis longus.|
 |G|ossa sesamoidea pedis|ossium sesamoideorum|sezamské kosti nohy|—|55|[uč.] Obvykle dvě, pod hlavicí 1. nártní kosti.|
 

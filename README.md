@@ -10,9 +10,10 @@ Mobilní webová aplikace na učení latinských názvů kostí a jejich část�
 | Složka | Co v ní je |
 | --- | --- |
 | `app/` | Aplikace (statické soubory, Three.js z CDN). Nasazuje se celá tato složka. |
-| `app/model/skeleton.glb` | 3D kostra, postavená skriptem v `tools/`. |
+| `app/model/skeleton.glb` | 3D kostra (zjednodušená, celá najednou), postavená skriptem v `tools/`. |
+| `app/model/detail/` | Každá kost zvlášť v plném rozlišení; načte se při izolaci kosti. |
 | `app/data.js` | Schválený seznam struktur (latinsky, česky, nadřazená kost, zajímavost). |
-| `tools/` | `build-model.mjs` – převod BodyParts3D → `skeleton.glb`; `manifest.mjs` – které kosti a jak se mapují. |
+| `tools/` | `build-model.mjs` – převod BodyParts3D → `skeleton.glb` + `detail/`; `manifest.mjs` – které kosti a jak se mapují. |
 | `prototype/` | Schválený klikací prototyp se zástupnými tvary (jen pro srovnání). |
 | `docs/PLAN.md` | Zadání, schválený seznam struktur, rozhodnutí. |
 | `raw/` | Stažená zdrojová data (není v gitu). |
@@ -22,9 +23,7 @@ Mobilní webová aplikace na učení latinských názvů kostí a jejich část�
 
 1. Stáhnout do `raw/bp3d/`: `BodyParts3D_3.0_obj_95.zip` a `parts_list_e.txt`
    z https://dbarchive.biosciencedbc.jp/data/bodyparts3d/20110915/
-2. Do `raw/zanatomy/` vyexportovat `coccyx.obj` a `sacrum.obj` ze `Startup.blend` projektu Z-Anatomy
-   (souřadnice ve světě, metry, Z nahoru).
-3. `cd tools && npm install && npm run build-model`
+2. `cd tools && npm install && npm run build-model`
 
 ## Nasazení
 
@@ -39,9 +38,9 @@ Před nasazením zvednout číslo `?v=N` u souborů v `app/`, aby prohlížeče 
 3D model kostry je odvozené dílo a šíří se pod licencí **CC BY-SA 4.0**:
 
 - **BodyParts3D**, © The Database Center for Life Science, licence CC BY-SA 2.1 Japan
-  (https://dbarchive.biosciencedbc.jp/en/bodyparts3d/) – všechny kosti kromě níže uvedených.
-- **Z-Anatomy** – The libre 3D atlas of anatomy, licence CC BY-SA 4.0
-  (https://github.com/Z-Anatomy/Models-of-human-anatomy) – os coccygis.
-- Ossa sesamoidea manus – vlastní jednoduchý model (v obou zdrojích chybí).
+  (https://dbarchive.biosciencedbc.jp/en/bodyparts3d/) – všechny kosti.
 
-Úpravy: výběr kostí, zjednodušení sítí, převod souřadnic, sloučení do jednoho souboru glTF.
+Úpravy: výběr kostí, oddělení kostrče od tělesa „sacrum“ (v BodyParts3D jsou jedno těleso),
+zjednodušení sítí pro celkový pohled, převod souřadnic, převod do glTF.
+
+Ossa sesamoidea manus v modelu nejsou – žádný ověřený 3D model je neobsahuje.

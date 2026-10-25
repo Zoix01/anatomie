@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { ITEMS, BY_ID, GENERIC_PARENT } from './data.js?v=7';
-import { loadSkeleton, PART_IDS } from './model.js?v=7';
-import { isMatch } from './match.js?v=7';
+import { ITEMS, BY_ID, GENERIC_PARENT } from './data.js?v=8';
+import { loadSkeleton, loadDetail, PART_IDS } from './model.js?v=8';
+import { isMatch } from './match.js?v=8';
+import { pickDistractors } from './quiz.js?v=8';
 
 const COLORS = {
   bone: new THREE.Color('#EBE2CC'),
@@ -61,6 +62,7 @@ function resize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
+  if (state.mode === 'home') homeView();
   requestRender();
 }
 window.addEventListener('resize', resize);
@@ -70,8 +72,11 @@ function requestRender() { needsRender = true; }
 controls.addEventListener('change', () => { requestRender(); updatePartVisibility(); });
 
 let camAnim = null;
+let lastT = null;
 function loop(t) {
   requestAnimationFrame(loop);
+  const dt = lastT == null ? 0 : Math.min(0.1, (t - lastT) / 1000); // s; otáčení na úvodu nezávisí na snímkové frekvenci
+  lastT = t;
   if (camAnim) {
     const k = Math.min(1, (t - camAnim.start) / 450);
     const e = 1 - Math.pow(1 - k, 3);
@@ -82,7 +87,7 @@ function loop(t) {
     if (k === 1) camAnim = null;
     needsRender = true;
   }
-  if (controls.update()) needsRender = true;
+  if (controls.update(dt)) needsRender = true;
   if (needsRender) {
     renderer.render(scene, camera);
     needsRender = false;
@@ -107,30 +112,54 @@ const viewDist = (radius, pad, minDist) => {
   return Math.max((radius * pad) / Math.sin(half), minDist);
 };
 
-// Vzdálenost, ze které je celý box vidět ve směru `dir` (promítnou se všechny rohy, ne obalová koule).
-function fitDist(box3, dir, pad = 1.1, minDist = 0.12) {
-  const c = box3.getCenter(new THREE.Vector3());
+// Osy obrazovky pro pohled ve směru `dir` (od cíle ke kameře): vpravo a nahoru.
+function viewAxes(dir) {
   const up = new THREE.Vector3(0, 1, 0).addScaledVector(dir, -dir.y);
   if (up.lengthSq() < 1e-6) up.set(0, 0, -1);
   up.normalize();
-  const right = new THREE.Vector3().crossVectors(up, dir).normalize();
+  return { up, right: new THREE.Vector3().crossVectors(up, dir).normalize() };
+}
+
+// Vzdálenost, ze které jsou všechny body (relativně ke středu `c`) vidět ve směru `dir`.
+function fitPoints(points, c, dir, pad, minDist) {
+  const { up, right } = viewAxes(dir);
   const tanV = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
   const tanH = tanV * camera.aspect;
   const p = new THREE.Vector3();
   let dist = minDist;
-  for (let i = 0; i < 8; i++) {
-    p.set(i & 1 ? box3.max.x : box3.min.x, i & 2 ? box3.max.y : box3.min.y, i & 4 ? box3.max.z : box3.min.z).sub(c);
+  for (const q of points) {
+    p.copy(q).sub(c);
     const z = p.dot(dir);
     dist = Math.max(dist, z + (Math.abs(p.dot(right)) * pad) / tanH, z + (Math.abs(p.dot(up)) * pad) / tanV);
   }
   return dist;
 }
 
-// Natočí kameru na box, směr pohledu zachová.
-function frameBox(box3, pad = 1.1, minDist = 0.12, dir = null) {
-  const c = box3.getCenter(new THREE.Vector3());
-  dir = (dir || camera.position.clone().sub(controls.target)).clone().normalize();
-  flyTo(c.clone().addScaledVector(dir, fitDist(box3, dir, pad, minDist)), c);
+// Vzdálenost, ze které je celý box vidět ve směru `dir` (promítnou se všechny rohy, ne obalová koule).
+function fitDist(box3, dir, pad = 1.1, minDist = 0.12) {
+  const corners = [];
+  for (let i = 0; i < 8; i++) corners.push(new THREE.Vector3(i & 1 ? box3.max.x : box3.min.x, i & 2 ? box3.max.y : box3.min.y, i & 4 ? box3.max.z : box3.min.z));
+  return fitPoints(corners, box3.getCenter(new THREE.Vector3()), dir, pad, minDist);
+}
+
+// Izolovaná kost: rámuje se podle bodů povrchu, ne podle rohů boxu (ty by šikmo kost zbytečně zmenšily).
+function frameMeshes(list, pad, minDist, dir) {
+  dir = dir.clone().normalize();
+  const { up, right } = viewAxes(dir);
+  const pts = [];
+  for (const m of list) {
+    const a = m.geometry.attributes.position;
+    const step = Math.max(1, Math.floor(a.count / 2000));
+    for (let i = 0; i < a.count; i += step) pts.push(new THREE.Vector3().fromBufferAttribute(a, i)); // geometrie je už ve světě
+  }
+  // střed podle rozsahu na obrazovce, ať kost není posunutá ke kraji
+  const lo = [Infinity, Infinity, Infinity];
+  const hi = [-Infinity, -Infinity, -Infinity];
+  for (const q of pts) {
+    [q.dot(right), q.dot(up), q.dot(dir)].forEach((v, k) => { lo[k] = Math.min(lo[k], v); hi[k] = Math.max(hi[k], v); });
+  }
+  const c = new THREE.Vector3().addScaledVector(right, (lo[0] + hi[0]) / 2).addScaledVector(up, (lo[1] + hi[1]) / 2).addScaledVector(dir, (lo[2] + hi[2]) / 2);
+  flyTo(c.clone().addScaledVector(dir, fitPoints(pts, c, dir, pad, minDist)), c);
 }
 
 // ---------- nejlepší pohled ----------
@@ -205,7 +234,8 @@ function overlayOffset(kind) {
   return { lift: kind === 'card' ? 0.2 : 0.16, shift: 0 };
 }
 
-function frameOn(targets, { box = null, pad = 1.6, minDist = 0.3, prefer = FRONT, lift = 0.2, shift = 0 } = {}) {
+// `arrowAt` = kam míří šipka (u párových kostí jen na jednu stranu, ne doprostřed mezi ně).
+function frameOn(targets, { box = null, pad = 1.6, minDist = 0.3, prefer = FRONT, lift = 0.2, shift = 0, arrowAt = null } = {}) {
   const t = { meshes: toSet(targets.meshes), code: targets.code };
   const focusBox = boxOf(t);
   const focus = focusBox.getCenter(new THREE.Vector3());
@@ -218,8 +248,9 @@ function frameOn(targets, { box = null, pad = 1.6, minDist = 0.3, prefer = FRONT
   const center = sphere.center.clone().addScaledVector(up, -lift * viewH).addScaledVector(right, shift * viewH * camera.aspect);
   flyTo(center.clone().addScaledVector(dir, dist), center);
   // šipka shora (na obrazovce) míří na střed struktury
-  const r = focusBox.getBoundingSphere(new THREE.Sphere()).radius;
-  arrow.position.copy(focus).addScaledVector(up, Math.min(r * 0.6, viewH * 0.05));
+  const arrowBox = arrowAt ? boxOf({ meshes: arrowAt, code: t.code }) : focusBox;
+  const r = arrowBox.getBoundingSphere(new THREE.Sphere()).radius;
+  arrow.position.copy(arrowBox.getCenter(new THREE.Vector3())).addScaledVector(up, Math.min(r * 0.6, viewH * 0.05));
   arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), up);
   arrow.scale.setScalar(viewH * 0.07);
   arrow.visible = true;
@@ -227,7 +258,18 @@ function frameOn(targets, { box = null, pad = 1.6, minDist = 0.3, prefer = FRONT
 }
 
 // ---------- členství a cíle ----------
-const membersOf = (id) => meshes.filter((m) => m.userData.item === id || m.userData.groups.includes(id));
+// Žebro patří dohromady se svou chrupavkou (costa = os costale + cartilago costalis).
+function cartilagesOf(ribs) {
+  return meshes.filter((c) => c.userData.decor === 'cartilage' && ribs.some((r) => r.userData.side === c.userData.side
+    && (c.userData.ribOf ? c.userData.ribOf === r.userData.fma : r.userData.item === c.userData.ribGroup)));
+}
+function membersOf(id) {
+  const ms = meshes.filter((m) => m.userData.item === id || m.userData.groups.includes(id));
+  const ribs = ms.filter((m) => m.userData.isRib);
+  return ribs.length ? ms.concat(cartilagesOf(ribs)) : ms;
+}
+// Jedna strana párové struktury (pro šipku): pravá, nebo strana, na kterou uživatel ťukl.
+const oneSide = (list, side = 'R') => (list.some((m) => m.userData.side) ? list.filter((m) => !m.userData.side || m.userData.side === side) : list);
 
 function boxOf(targets) {
   const box = new THREE.Box3();
@@ -244,14 +286,13 @@ function boxOf(targets) {
   return box;
 }
 
-// Pro test: struktura na jedné (pravé) straně, části obratlů/žeber na všech.
+// Pro test: párové struktury na obou stranách, části obratlů/žeber na všech.
 function quizTargets(item) {
-  const notLeft = (m) => m.userData.side !== 'L';
-  if (item.kind !== 'part') return { meshes: membersOf(item.id).filter(notLeft), code: null };
+  if (item.kind !== 'part') return { meshes: membersOf(item.id), code: null };
   const code = PART_CODE[item.id];
   if (item.parent === 'vertebra') return { meshes: meshes.filter((m) => m.userData.isVertebra), code };
-  if (item.parent === 'costa') return { meshes: meshes.filter((m) => m.userData.isRib && notLeft(m)), code };
-  return { meshes: membersOf(item.parent).filter(notLeft), code };
+  if (item.parent === 'costa') return { meshes: meshes.filter((m) => m.userData.isRib), code };
+  return { meshes: membersOf(item.parent), code };
 }
 
 // ---------- barvení ----------
@@ -282,7 +323,7 @@ function paint(mesh) {
   const c = new THREE.Color();
   for (let i = 0; i < part.length; i++) {
     const code = part[i];
-    c.copy(showParts && code >= 0 ? partColor(mesh, code) : COLORS.bone);
+    c.copy(showParts && code >= 0 ? partColor(mesh, code) : mesh.userData.base || COLORS.bone);
     for (const l of layers) if (l.code == null || l.code === code) { c.lerp(l.c, l.k); break; }
     col.setXYZ(i, c.r, c.g, c.b);
   }
@@ -322,20 +363,26 @@ const ndc = new THREE.Vector2();
 function pick(clientX, clientY) {
   ndc.set((clientX / window.innerWidth) * 2 - 1, -(clientY / window.innerHeight) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
-  const hit = raycaster.intersectObjects(meshes.filter((m) => m.visible), false).find((h) => !h.object.userData.decor);
+  // zuby se neťukají (paprsek projde k čelisti za nimi)
+  const hit = raycaster.intersectObjects(meshes.filter((m) => m.visible), false).find((h) => h.object.userData.decor !== 'teeth');
   if (!hit) return null;
-  const mesh = hit.object;
-  const code = mesh.geometry.attributes.part.array[hit.face.a];
+  let mesh = hit.object;
+  let code = mesh.geometry.attributes.part.array[hit.face.a];
+  if (mesh.userData.decor === 'cartilage') {
+    // chrupavka vybere své žebro
+    const c = mesh.userData;
+    mesh = meshes.find((r) => r.userData.isRib && r.userData.side === c.side && (c.ribOf ? r.userData.fma === c.ribOf : r.userData.item === c.ribGroup));
+    code = -1;
+  }
+  // Párové kosti svítí na obou stranách; v izolaci jen to, co je vidět.
+  const visibleMembers = (id) => membersOf(id).filter((m) => m.visible);
   if (code >= 0 && partsShown.has(mesh)) {
     const id = PART_IDS[code];
-    if (state.mode === 'isolate' || !SMALL_PARTS.has(id)) return { item: BY_ID[id], mesh, meshes: new Set([mesh]), code };
+    const set = mesh.userData.isRib || mesh.userData.isVertebra ? [mesh] : visibleMembers(mesh.userData.item);
+    if (state.mode === 'isolate' || !SMALL_PARTS.has(id)) return { item: BY_ID[id], mesh, meshes: new Set(set), code };
   }
   const item = BY_ID[mesh.userData.item];
-  // Skupina svítí celá; v izolaci jen to, co je vidět.
-  const set = item.kind === 'group'
-    ? membersOf(item.id).filter((m) => m.visible)
-    : membersOf(item.id).filter((m) => m.visible && m.userData.side === mesh.userData.side);
-  return { item, mesh, meshes: new Set(set), code: null };
+  return { item, mesh, meshes: new Set(visibleMembers(item.id)), code: null };
 }
 
 const sameTarget = (a, b) => a && b && a.item === b.item && a.mesh === b.mesh;
@@ -380,11 +427,32 @@ function show(screen) {
   SCREENS.forEach((s) => $(s).classList.toggle('active', s === screen));
 }
 
+// ---------- úvod: kostra se pomalu otáčí nad nadpisem ----------
+function homeView() {
+  if (skeletonBox.isEmpty()) return;
+  const dir = new THREE.Vector3(0, 0.08, 1).normalize();
+  const dist = fitDist(skeletonBox, dir, 1.7, 0.5);
+  // kostra v horní části obrazovky, dole zůstane místo na nadpis a tlačítka
+  const c = skeletonBox.getCenter(new THREE.Vector3());
+  c.y -= 0.36 * dist * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  controls.target.copy(c);
+  camera.position.copy(c).addScaledVector(dir, dist);
+  camAnim = null;
+  requestRender();
+}
+function setHomeSpin(on) {
+  controls.autoRotate = on;
+  controls.autoRotateSpeed = 1; // jedna otáčka za minutu
+  controls.enabled = !on;
+}
+
 function go(mode) {
   closeCard();
   hideArrow();
   if (state.mode === 'isolate' && mode !== 'isolate') endIsolate(false);
   state.mode = mode;
+  setHomeSpin(mode === 'home');
+  if (mode === 'home') homeView();
   tint.hover = null;
   if (mode !== 'quiz') tint.quiz = null;
   if (mode === 'explore') {
@@ -412,7 +480,7 @@ $('exploreBack').addEventListener('click', () => {
 });
 
 function resetCamera(instant = false) {
-  if (state.mode === 'isolate' && state.isolated) return frameBox(boxOf({ meshes: state.isolated, code: null }), 1.15, 0.12, ISO_DIR);
+  if (state.mode === 'isolate' && state.isolated) return frameMeshes(state.isolated, 1.12, 0.12, ISO_DIR);
   updateDefaultView();
   if (instant) { camera.position.copy(DEFAULT_VIEW.pos); controls.target.copy(DEFAULT_VIEW.target); camAnim = null; requestRender(); }
   else flyTo(DEFAULT_VIEW.pos, DEFAULT_VIEW.target);
@@ -429,7 +497,7 @@ function openCard(t, { quiz: result = null, yours = null } = {}) {
   if (state.mode === 'explore') {
     const box = t.code == null ? null : boxOf({ meshes: [t.mesh], code: null });
     const prefer = camera.position.clone().sub(controls.target); // zůstaň na straně, odkud uživatel ťukl
-    frameOn({ meshes: t.meshes, code: t.code }, { box, pad: 2, minDist: 0.45, prefer, ...overlayOffset('card') });
+    frameOn({ meshes: t.meshes, code: t.code }, { box, pad: 2, minDist: 0.45, prefer, arrowAt: oneSide([...t.meshes], t.mesh.userData.side || 'R'), ...overlayOffset('card') });
   }
   const badge = $('cardBadge');
   badge.hidden = !inQuiz;
@@ -491,7 +559,8 @@ $('cardAction').addEventListener('click', () => {
   const m = t.mesh;
   let iso;
   const base = it.kind === 'part' ? BY_ID[m.userData.item] : it;
-  if (m.userData.isRib || m.userData.isVertebra) iso = [m];
+  if (m.userData.isRib) iso = [m, ...cartilagesOf([m])];
+  else if (m.userData.isVertebra) iso = [m];
   else iso = membersOf(base.id).filter((x) => x.userData.side === m.userData.side);
   closeCard();
   startIsolate(iso, it.kind === 'part' ? BY_ID[m.userData.item].la : it.la);
@@ -506,10 +575,29 @@ function startIsolate(iso, title) {
   $('exploreBack').textContent = '‹ Zpět na kostru';
   hideArrow();
   updatePartVisibility();
-  frameBox(boxOf({ meshes: iso, code: null }), 1.15, 0.12, ISO_DIR);
+  frameMeshes(iso, 1.12, 0.12, ISO_DIR);
+  // Kost v plném rozlišení se dotáhne na pozadí a vymění za zjednodušenou.
+  const token = (state.isoToken = {});
+  const todo = iso.filter((m) => !m.userData.decor);
+  $('isoLoading').hidden = false;
+  Promise.all(todo.map((m) => loadDetail(m.userData.fma))).then((geos) => {
+    if (state.isoToken !== token) return;
+    geos.forEach((g, i) => {
+      if (!g) return;
+      todo[i].userData.lowGeo = todo[i].geometry;
+      todo[i].geometry = g;
+    });
+    $('isoLoading').hidden = true;
+    paintAll();
+  });
 }
 
 function endIsolate(toExplore) {
+  state.isoToken = null;
+  $('isoLoading').hidden = true;
+  for (const m of state.isolated || []) {
+    if (m.userData.lowGeo) { m.geometry = m.userData.lowGeo; delete m.userData.lowGeo; }
+  }
   meshes.forEach((m) => { m.visible = true; });
   state.isolated = null;
   if (state.saved) flyTo(state.saved.pos, state.saved.target);
@@ -536,6 +624,7 @@ $('startQuiz').addEventListener('click', () => whenLoaded(startQuiz));
 function startQuiz() {
   Object.assign(quiz, { deck: [], n: 0, correct: 0, answered: 0, wrong: [] });
   state.mode = 'quiz';
+  setHomeSpin(false);
   show('quiz');
   $('easyAnswers').hidden = difficulty !== 'easy';
   $('hardForm').hidden = difficulty !== 'hard';
@@ -545,7 +634,7 @@ function startQuiz() {
 
 // V testu jen to, co model už umí ukázat (části kostí přibudou v M2).
 function available(it) {
-  if (it.noQuiz) return false;
+  if (it.noQuiz || it.extra) return false;
   if (it.kind !== 'part') return membersOf(it.id).length > 0;
   return meshes.some((m) => m.geometry.attributes.part.array.includes(PART_CODE[it.id]));
 }
@@ -574,7 +663,7 @@ function nextQuestion() {
 // V testu je vždy celá kostra; kamera se natočí tak, aby zvýrazněná struktura byla vidět (u části i celá kost).
 function frameQuiz(item) {
   const t = quizTargets(item);
-  frameOn(t, { box: boxOf({ meshes: t.meshes, code: null }), pad: 2.2, minDist: 0.7, ...overlayOffset('quiz') });
+  frameOn(t, { box: boxOf({ meshes: t.meshes, code: null }), pad: 2.2, minDist: 0.7, arrowAt: oneSide(t.meshes), ...overlayOffset('quiz') });
 }
 
 // Po odpovědi (správné i špatné): karta jako v Prozkoumat (latinsky, česky, nadřazená struktura, zajímavost) + „Další“.
@@ -588,13 +677,7 @@ function updateStatus() {
   $('quizStatus').innerHTML = `Otázka ${quiz.n} · <b>${quiz.correct}</b> správně`;
 }
 
-// Špatné možnosti: stejný druh a co nejblíž (části téže kosti, kosti téže oblasti).
-function distractors(item) {
-  const same = (f) => ITEMS.filter((x) => x.id !== item.id && x.kind === item.kind && available(x) && f(x));
-  let pool = item.kind === 'part' ? same((x) => x.parent === item.parent) : same((x) => x.region === item.region);
-  if (pool.length < 3) pool = pool.concat(shuffle(same(() => true)).filter((x) => !pool.includes(x)));
-  return shuffle(pool).slice(0, 3);
-}
+const distractors = (item) => pickDistractors(item, { items: ITEMS, byId: BY_ID, isAvailable: available, shuffle });
 
 function renderOptions() {
   const box = $('easyAnswers');
@@ -705,6 +788,8 @@ loadSkeleton(scene, (f) => { $('loadPct').textContent = Math.round(f * 100); })
     meshes.push(...list);
     for (const m of meshes) skeletonBox.expandByObject(m);
     loaded = true;
+    stage.classList.add('ready');
+    if (state.mode === 'home') { homeView(); setHomeSpin(true); }
     $('loading').hidden = true;
     // Jen pro kontrolu modelu (?debug): přístup ke scéně z konzole / testů.
     if (new URLSearchParams(location.search).has('debug')) Object.assign(window, { __app: { THREE, camera, controls, meshes, requestRender, paintAll } });
