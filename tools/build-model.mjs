@@ -82,6 +82,12 @@ const zaToBp = (x, y, z) => {
   return [(X - a.center[0]) * s + b.center[0], (Y - a.min[1]) * s + b.min[1], (Z - a.center[2]) * s + b.center[2]];
 };
 const coccyx = readObj(path.join(RAW, 'zanatomy', 'coccyx.obj'), zaToBp);
+// Po převodu zůstává mezi kostrčí a apexem ~5 mm a kostrč vypadá odtržená. Rohy kostrče (cornua) ve skutečnosti
+// sahají vzhůru k rohům kosti křížové, proto ji zvedneme tak, aby se obalové boxy mírně překrývaly.
+const JOINT_GAP = -0.0025;
+const lift = b.min[1] - JOINT_GAP - bbox(coccyx.pos).max[1];
+for (let i = 1; i < coccyx.pos.length; i += 3) coccyx.pos[i] += lift;
+console.log(`Kostrč posunuta nahoru o ${(lift * 1000).toFixed(1)} mm`);
 meshes.push({ id: 'ZA-coccyx', name: 'coccyx (Z-Anatomy)', spec: { item: 'os_coccygis', side: null, source: 'Z-Anatomy' }, ...coccyx });
 
 // ---------- sezamské kosti ruky (v BodyParts3D ani Z-Anatomy nejsou) ----------

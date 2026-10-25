@@ -3,11 +3,11 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { ITEMS } from './data.js?v=6';
+import { ITEMS } from './data.js?v=7';
 
 export const PART_IDS = ITEMS.filter((it) => it.kind === 'part').map((it) => it.id);
 const PART_CODE = Object.fromEntries(PART_IDS.map((id, i) => [id, i]));
-export const MODEL_URL = 'model/skeleton.glb?v=6';
+export const MODEL_URL = 'model/skeleton.glb?v=7';
 
 // Komprimované pozice (Int16 + měřítko v uzlu) převedeme na obyčejné souřadnice ve světě,
 // aby raycasting, rámování kamery a barvení pracovaly s jednou soustavou.

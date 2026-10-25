@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { ITEMS, BY_ID, GENERIC_PARENT } from './data.js?v=6';
-import { loadSkeleton, PART_IDS } from './model.js?v=6';
-import { isMatch } from './match.js?v=6';
+import { ITEMS, BY_ID, GENERIC_PARENT } from './data.js?v=7';
+import { loadSkeleton, PART_IDS } from './model.js?v=7';
+import { isMatch } from './match.js?v=7';
 
 const COLORS = {
   bone: new THREE.Color('#EBE2CC'),
@@ -44,8 +44,17 @@ const ISO_DIR = new THREE.Vector3(0.45, 0.35, 1); // izolovaná kost: šikmý po
 // Kostra se načítá na pozadí hned po otevření stránky; výchozí pohled se spočítá z jejích rozměrů.
 const meshes = [];
 const DEFAULT_VIEW = { pos: new THREE.Vector3(0, 0.9, 2.7), target: new THREE.Vector3(0, 0.86, 0) };
+const skeletonBox = new THREE.Box3();
 camera.position.copy(DEFAULT_VIEW.pos);
 controls.target.copy(DEFAULT_VIEW.target);
+
+// Výchozí pohled zepředu na celou kostru; počítá se znovu, protože se mohl změnit poměr stran okna.
+function updateDefaultView() {
+  if (skeletonBox.isEmpty()) return;
+  const dir = new THREE.Vector3(0, 0.03, 1).normalize();
+  skeletonBox.getCenter(DEFAULT_VIEW.target);
+  DEFAULT_VIEW.pos.copy(DEFAULT_VIEW.target).addScaledVector(dir, fitDist(skeletonBox, dir, 1.04, 0.5));
+}
 const pickable = () => meshes.filter((m) => m.visible && !m.userData.decor);
 
 function resize() {
@@ -98,12 +107,30 @@ const viewDist = (radius, pad, minDist) => {
   return Math.max((radius * pad) / Math.sin(half), minDist);
 };
 
+// Vzdálenost, ze které je celý box vidět ve směru `dir` (promítnou se všechny rohy, ne obalová koule).
+function fitDist(box3, dir, pad = 1.1, minDist = 0.12) {
+  const c = box3.getCenter(new THREE.Vector3());
+  const up = new THREE.Vector3(0, 1, 0).addScaledVector(dir, -dir.y);
+  if (up.lengthSq() < 1e-6) up.set(0, 0, -1);
+  up.normalize();
+  const right = new THREE.Vector3().crossVectors(up, dir).normalize();
+  const tanV = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  const tanH = tanV * camera.aspect;
+  const p = new THREE.Vector3();
+  let dist = minDist;
+  for (let i = 0; i < 8; i++) {
+    p.set(i & 1 ? box3.max.x : box3.min.x, i & 2 ? box3.max.y : box3.min.y, i & 4 ? box3.max.z : box3.min.z).sub(c);
+    const z = p.dot(dir);
+    dist = Math.max(dist, z + (Math.abs(p.dot(right)) * pad) / tanH, z + (Math.abs(p.dot(up)) * pad) / tanV);
+  }
+  return dist;
+}
+
 // Natočí kameru na box, směr pohledu zachová.
-function frameBox(box3, pad = 1.4, minDist = 0.12, dir = null) {
-  const sphere = box3.getBoundingSphere(new THREE.Sphere());
-  const dist = viewDist(sphere.radius, pad, minDist);
+function frameBox(box3, pad = 1.1, minDist = 0.12, dir = null) {
+  const c = box3.getCenter(new THREE.Vector3());
   dir = (dir || camera.position.clone().sub(controls.target)).clone().normalize();
-  flyTo(sphere.center.clone().add(dir.multiplyScalar(dist)), sphere.center);
+  flyTo(c.clone().addScaledVector(dir, fitDist(box3, dir, pad, minDist)), c);
 }
 
 // ---------- nejlepší pohled ----------
@@ -385,7 +412,8 @@ $('exploreBack').addEventListener('click', () => {
 });
 
 function resetCamera(instant = false) {
-  if (state.mode === 'isolate' && state.isolated) return frameBox(boxOf({ meshes: state.isolated, code: null }), 1.25, 0.12, ISO_DIR);
+  if (state.mode === 'isolate' && state.isolated) return frameBox(boxOf({ meshes: state.isolated, code: null }), 1.15, 0.12, ISO_DIR);
+  updateDefaultView();
   if (instant) { camera.position.copy(DEFAULT_VIEW.pos); controls.target.copy(DEFAULT_VIEW.target); camAnim = null; requestRender(); }
   else flyTo(DEFAULT_VIEW.pos, DEFAULT_VIEW.target);
 }
@@ -478,7 +506,7 @@ function startIsolate(iso, title) {
   $('exploreBack').textContent = '‹ Zpět na kostru';
   hideArrow();
   updatePartVisibility();
-  frameBox(boxOf({ meshes: iso, code: null }), 1.25, 0.12, ISO_DIR);
+  frameBox(boxOf({ meshes: iso, code: null }), 1.15, 0.12, ISO_DIR);
 }
 
 function endIsolate(toExplore) {
@@ -675,12 +703,7 @@ function whenLoaded(fn) {
 loadSkeleton(scene, (f) => { $('loadPct').textContent = Math.round(f * 100); })
   .then((list) => {
     meshes.push(...list);
-    const box = new THREE.Box3();
-    for (const m of meshes) box.expandByObject(m);
-    const c = box.getCenter(new THREE.Vector3());
-    const h = box.max.y - box.min.y;
-    DEFAULT_VIEW.target.set(c.x, c.y, c.z);
-    DEFAULT_VIEW.pos.set(c.x, c.y + h * 0.03, c.z + viewDist(h / 2, 1.08, 0.5));
+    for (const m of meshes) skeletonBox.expandByObject(m);
     loaded = true;
     $('loading').hidden = true;
     // Jen pro kontrolu modelu (?debug): přístup ke scéně z konzole / testů.
