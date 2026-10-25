@@ -2,6 +2,7 @@
 // kind: bone = samostatná kost (1+ meshů), part = oblast na kosti, group = skupina kostí.
 // parent u části = id kosti, nebo obecně 'vertebra' / 'costa' / 'basis_cranii'.
 // groupOf = nadřazená skupina („Patří do:“ na kartě). variants = tvary ze slidů, které test uzná.
+// noQuiz = v testu se neptá (u částí: v celé kostře schované v kloubu – caput costae, caput femoris; rozhodnutí 2026-10-25).
 // extra = kost, která na slidech není: v modelu jde ťuknout a ukáže název, v testu nikdy není.
 // Ossa sesamoidea manus (slide 34) v modelu nejsou: žádný ověřený 3D model je neobsahuje.
 // Canalis caroticus (slide 68) zatím není namalovaný: v modelu BodyParts3D není zřetelně vymodelovaný (rozhodnutí 2026-10-25).
@@ -58,7 +59,7 @@ export const ITEMS = [
   { id: 'tuber_ischiadicum', kind: 'part', parent: 'os_coxae', la: 'tuber ischiadicum', cz: 'sedací hrbol', fact: 'Při sezení nese váhu těla.' },
   { id: 'facies_auricularis', kind: 'part', parent: 'os_coxae', la: 'facies auricularis ossis ilii', cz: 'ušní plocha', variants: ['facies auricularis'], fact: 'S kostí křížovou tvoří art. sacroiliaca – „kloub tuhý“.' },
   { id: 'femur', kind: 'bone', region: 'dk', la: 'femur', cz: 'kost stehenní', fact: 'Nejdelší kost lidského těla.' },
-  { id: 'caput_femoris', kind: 'part', parent: 'femur', la: 'caput femoris', cz: 'hlavice kosti stehenní', fact: 'Při totální endoprotéze kyčle se nahrazuje umělou.' },
+  { id: 'caput_femoris', kind: 'part', parent: 'femur', noQuiz: true, la: 'caput femoris', cz: 'hlavice kosti stehenní', fact: 'Při totální endoprotéze kyčle se nahrazuje umělou.' },
   { id: 'collum_femoris', kind: 'part', parent: 'femur', la: 'collum femoris', cz: 'krček kosti stehenní', fact: 'Zlomenina krčku je typický úraz seniorů.' },
   { id: 'trochanter_major', kind: 'part', parent: 'femur', la: 'trochanter major', cz: 'velký chocholík', fact: 'Vzdálenost obou (distantia bitrochanterica) je asi 31 cm.' },
   { id: 'trochanter_minor', kind: 'part', parent: 'femur', la: 'trochanter minor', cz: 'malý chocholík', fact: 'Upíná se na něj m. iliopsoas.' },
@@ -130,7 +131,7 @@ export const ITEMS = [
   { id: 'costae_fluctuantes', kind: 'group', region: 'hrudnik', la: 'costae fluctuantes', cz: 'volná (bludná) žebra', variants: ['costae liberae'], fact: '2 páry.' },
   { id: 'costa_prima', kind: 'bone', groupOf: 'costae_verae', region: 'hrudnik', la: 'costa prima', cz: 'první žebro', variants: ['costa 1', '1. zebro'] },
   { id: 'costa_secunda', kind: 'bone', groupOf: 'costae_verae', region: 'hrudnik', la: 'costa secunda', cz: 'druhé žebro', variants: ['costa 2', '2. zebro'] },
-  { id: 'caput_costae', kind: 'part', parent: 'costa', la: 'caput costae', cz: 'hlavice žebra', fact: 'Kloubí se s těly obratlů.' },
+  { id: 'caput_costae', kind: 'part', parent: 'costa', noQuiz: true, la: 'caput costae', cz: 'hlavice žebra', fact: 'Kloubí se s těly obratlů.' },
   { id: 'collum_costae', kind: 'part', parent: 'costa', la: 'collum costae', cz: 'krček žebra' },
   { id: 'tuberculum_costae', kind: 'part', parent: 'costa', la: 'tuberculum costae', cz: 'hrbolek žebra', fact: 'Kloubí se s příčným výběžkem obratle.' },
   { id: 'corpus_costae', kind: 'part', parent: 'costa', la: 'corpus costae', cz: 'tělo žebra', fact: 'Zlomeniny žeber u kojenců jsou typickou známkou týrání.' },

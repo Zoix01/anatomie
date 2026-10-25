@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { ITEMS } from './data.js?v=10';
+import { ITEMS } from './data.js?v=11';
 
 export const PART_IDS = ITEMS.filter((it) => it.kind === 'part').map((it) => it.id);
 const PART_CODE = Object.fromEntries(PART_IDS.map((id, i) => [id, i]));

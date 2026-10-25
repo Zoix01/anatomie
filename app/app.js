@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { ITEMS, BY_ID, GENERIC_PARENT } from './data.js?v=10';
-import { loadSkeleton, loadDetail, PART_IDS } from './model.js?v=10';
-import { isMatch } from './match.js?v=10';
-import { pickDistractors } from './quiz.js?v=10';
+import { ITEMS, BY_ID, GENERIC_PARENT } from './data.js?v=11';
+import { loadSkeleton, loadDetail, PART_IDS } from './model.js?v=11';
+import { isMatch } from './match.js?v=11';
+import { pickDistractors } from './quiz.js?v=11';
 
 const COLORS = {
   bone: new THREE.Color('#EBE2CC'),
