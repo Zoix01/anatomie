@@ -3,11 +3,11 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { ITEMS } from './data.js?v=8';
+import { ITEMS } from './data.js?v=10';
 
 export const PART_IDS = ITEMS.filter((it) => it.kind === 'part').map((it) => it.id);
 const PART_CODE = Object.fromEntries(PART_IDS.map((id, i) => [id, i]));
-const MODEL_VERSION = 8;
+const MODEL_VERSION = 10;
 export const MODEL_URL = `model/skeleton.glb?v=${MODEL_VERSION}`;
 const CARTILAGE = new THREE.Color('#F2EBDB');
 
@@ -34,8 +34,16 @@ function prepare(src) {
   const x = src.userData || {};
   const geo = bakeToWorld(src);
   const n = geo.attributes.position.count;
-  // část kosti na vrcholech (index do PART_IDS, −1 = žádná); kost hrudní je ze tří těles = rovnou části
-  geo.setAttribute('part', new THREE.BufferAttribute(new Float32Array(n).fill(x.part ? PART_CODE[x.part] : -1), 1));
+  // část kosti na vrcholech (index do PART_IDS, −1 = žádná); kost hrudní je ze tří těles = rovnou části,
+  // u ostatních je na každém vrcholu index do extras.parts (atribut _PART, 255 = žádná)
+  const part = new Float32Array(n).fill(x.part ? PART_CODE[x.part] : -1);
+  const painted = geo.getAttribute('_part');
+  if (painted && x.parts) {
+    const codes = x.parts.map((id) => PART_CODE[id] ?? -1);
+    for (let i = 0; i < n; i++) { const k = painted.getX(i); part[i] = k === 255 ? -1 : codes[k]; } // getX: atribut je prokládaný (krok 4 B)
+    geo.deleteAttribute('_part');
+  }
+  geo.setAttribute('part', new THREE.BufferAttribute(part, 1));
   geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
   return geo;
 }
@@ -63,7 +71,8 @@ export async function loadSkeleton(scene, onProgress) {
       ribGroup: x.ribGroup || null, // společná chrupavka 8.–10. žebra
       isRib: !!x.rib,
       isVertebra: !!x.vertebra,
-      hasParts: !!x.part,
+      hasParts: !!(x.part || x.parts),
+      partCodes: (x.parts || []).map((id) => PART_CODE[id]),
     };
     if (x.decor === 'teeth') {
       mat.vertexColors = false;

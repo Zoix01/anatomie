@@ -105,6 +105,12 @@ h1 { font-size: 36px; margin: 0 0 4px; color: var(--text); letter-spacing: -0.01
   margin: 0; padding: 6px 12px; border-radius: 999px; background: rgba(255, 253, 248, 0.8);
   color: var(--muted); font-size: 14px; white-space: nowrap;
 }
+.iso-title {
+  position: absolute; left: 50%; transform: translateX(-50%); top: calc(12px + env(safe-area-inset-top));
+  margin: 0; padding: 10px 16px; border-radius: 999px; background: rgba(255, 253, 248, 0.94); box-shadow: var(--shadow);
+  font-size: 18px; white-space: nowrap; pointer-events: none;
+}
+@media (max-width: 480px) { .iso-title { top: calc(68px + env(safe-area-inset-top)); } } /* pod tlačítkem Zpět */
 .question {
   align-self: center; margin: calc(68px + env(safe-area-inset-top)) 16px 0; padding: 8px 18px;
   border-radius: 999px; background: var(--accent); color: #fff; font-size: 20px; font-weight: 700;

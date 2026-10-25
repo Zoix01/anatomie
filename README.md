@@ -23,7 +23,10 @@ Mobilní webová aplikace na učení latinských názvů kostí a jejich část�
 
 1. Stáhnout do `raw/bp3d/`: `BodyParts3D_3.0_obj_95.zip` a `parts_list_e.txt`
    z https://dbarchive.biosciencedbc.jp/data/bodyparts3d/20110915/
-2. `cd tools && npm install && npm run build-model`
+2. Stáhnout Z-Anatomy (`Startup.blend`, https://github.com/Z-Anatomy/Models-of-human-anatomy) do `raw/zanatomy/Z-Anatomy/`
+   a v Blenderu vyexportovat kosti a body popisků:
+   `blender -b raw/zanatomy/Z-Anatomy/Startup.blend --python tools/za_export.py -- raw/zanatomy`
+3. `cd tools && npm install && npm run build-model`
 
 ## Nasazení
 
@@ -39,8 +42,12 @@ Před nasazením zvednout číslo `?v=N` u souborů v `app/`, aby prohlížeče 
 
 - **BodyParts3D**, © The Database Center for Life Science, licence CC BY-SA 2.1 Japan
   (https://dbarchive.biosciencedbc.jp/en/bodyparts3d/) – všechny kosti.
+- **Z-Anatomy** – The libre 3D atlas of anatomy, licence CC BY-SA 4.0
+  (https://github.com/Z-Anatomy/Models-of-human-anatomy) – polohy popisků struktur a rozdělení pánevní kosti,
+  podle kterých jsou namalované části kostí (`tools/parts.mjs`).
 
 Úpravy: výběr kostí, oddělení kostrče od tělesa „sacrum“ (v BodyParts3D jsou jedno těleso),
 zjednodušení sítí pro celkový pohled, převod souřadnic, převod do glTF.
 
 Ossa sesamoidea manus v modelu nejsou – žádný ověřený 3D model je neobsahuje.
+Canalis caroticus zatím není namalovaný – v BodyParts3D není zřetelně vymodelovaný.

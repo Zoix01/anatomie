@@ -12,6 +12,7 @@ import { EXTMeshoptCompression, KHRMeshQuantization } from '@gltf-transform/exte
 import { reorder, quantize, dedup, prune } from '@gltf-transform/functions';
 import { MeshoptSimplifier, MeshoptEncoder } from 'meshoptimizer';
 import { classify, splitSide } from './manifest.mjs';
+import { BONE_PARTS, HIP_MATERIALS, zaTransform, readLandmarks, readZaObj, baseFromZa, paintBone, paintVertebra, paintRib, paintCranialFossae } from './parts.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const RAW = path.join(ROOT, 'raw');
@@ -170,6 +171,53 @@ for (const m of meshes.filter((x) => x.spec.decor === 'cartilage')) {
   }
 }
 
+// ---------- malované části (popisky z Z-Anatomy) ----------
+{
+  const ZA = path.join(RAW, 'zanatomy');
+  const fromZA = (x, y, z) => [x, z, -y];
+  // kosti, podle kterých se dopočítá převod Z-Anatomy → BodyParts3D
+  const ref = [['right femur', 'Femur.r'], ['left hip bone', 'Hip_bone.l'], ['right scapula', 'Scapula.r'], ['frontal bone', 'Frontal_bone'],
+    ['occipital bone', 'Occipital_bone'], ['right tibia', 'Tibia.r'], ['right humerus', 'Humerus.r'], ['right fifth rib', 'Fifth_rib.r']];
+  const pairs = ref.map(([bp, za]) => {
+    const a = bbox(meshes.find((m) => m.name === bp).pos);
+    const b = bbox(readObj(path.join(ZA, 'obj', `${za}.obj`), fromZA).pos);
+    return { bp: a.center, za: b.center, bpSize: a.size, zaSize: b.size };
+  });
+  const T = zaTransform(pairs);
+  console.log(`Z-Anatomy → BodyParts3D: měřítko ${T.s.toFixed(4)}, posun ${T.t.map((v) => (v * 1000).toFixed(1)).join(' / ')} mm`);
+  const landmarks = readLandmarks(path.join(ZA, 'landmarks.tsv'), (p) => T.apply(fromZA(...p)));
+  const warned = new Set();
+  const warn = (msg) => { if (!warned.has(msg)) { warned.add(msg); console.warn('⚠ ' + msg); } };
+  let painted = 0;
+  const ORD = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth', 'eleventh', 'twelfth'];
+  for (const m of meshes) {
+    if (m.spec.vertebra) {
+      Object.assign(m, paintVertebra(m, m.spec.item === 'atlas' || m.spec.item === 'axis' ? m.spec.item : 'typical'));
+      painted++;
+      continue;
+    }
+    if (m.spec.rib) {
+      Object.assign(m, paintRib(m, ORD.indexOf(splitSide(m.name).bare.split(' ')[0]) + 1));
+      painted++;
+      continue;
+    }
+    const spec = BONE_PARTS[m.spec.item];
+    if (!spec) continue;
+    // pánevní kost: tři srostlé kosti podle materiálů téže kosti v Z-Anatomy
+    const base = m.spec.item === 'os_coxae'
+      ? baseFromZa(m, readZaObj(path.join(ZA, 'obj', `Hip_bone.${m.spec.side.toLowerCase()}.obj`), (p) => T.apply(fromZA(...p))), HIP_MATERIALS)
+      : null;
+    Object.assign(m, paintBone(m, spec, landmarks, warn, base));
+    painted++;
+  }
+  const one = (item, side) => meshes.find((m) => m.spec.item === item && (!side || m.spec.side === side));
+  const fossae = paintCranialFossae({
+    frontale: one('os_frontale'), ethmoidale: one('os_ethmoidale'), sphenoidale: one('os_sphenoidale'), occipitale: one('os_occipitale'),
+    temporale: [one('os_temporale', 'R'), one('os_temporale', 'L')], parietale: [one('os_parietale', 'R'), one('os_parietale', 'L')],
+  }, landmarks, warn);
+  console.log(`Části namalovány na ${painted} kostech; jámy lebeční (přední/střední/zadní): ${fossae.join(' / ')} vrcholů`);
+}
+
 // ---------- nohy na nule ----------
 let minY = Infinity;
 for (const m of meshes) minY = Math.min(minY, bbox(m.pos).min[1]);
@@ -181,7 +229,7 @@ await MeshoptEncoder.ready;
 const totalTris = meshes.reduce((n, m) => n + m.idx.length / 3, 0);
 console.log(`Trojúhelníků v BodyParts3D: ${totalTris.toLocaleString('cs')}, cíl ${TRI_BUDGET.toLocaleString('cs')}`);
 // plné rozlišení si schováme pro detailní soubory (izolovaná kost)
-for (const m of meshes) m.full = { pos: m.pos, idx: m.idx };
+for (const m of meshes) m.full = { pos: m.pos, idx: m.idx, labels: m.labels };
 
 // Rozpočet po kostech: stejný poměr pro všechny, ale aspoň MIN_TRIS, aby malé kůstky nepřišly o tvar.
 const MIN_TRIS = 600;
@@ -202,6 +250,12 @@ for (const m of meshes) {
   for (const v of idx) if (remap[v] < 0) { remap[v] = pos.length / 3; pos.push(m.pos[v * 3], m.pos[v * 3 + 1], m.pos[v * 3 + 2]); }
   m.idx = Uint32Array.from(idx, (v) => remap[v]);
   m.pos = new Float32Array(pos);
+  if (m.labels) {
+    // zjednodušení ponechává původní vrcholy, takže části se jen přenesou
+    const labels = new Uint8Array(pos.length / 3);
+    remap.forEach((r, v) => { if (r >= 0) labels[r] = m.labels[v]; });
+    m.labels = labels;
+  }
 }
 
 // Hladké normály vážené plochou trojúhelníků.
@@ -221,7 +275,7 @@ function vertexNormals(pos, idx) {
   return n;
 }
 
-const CREDITS = 'BodyParts3D, © The Database Center for Life Science, CC BY-SA 2.1 JP. Upraveno (výběr, rozdělení kosti křížové a kostrče, zjednodušení).';
+const CREDITS = 'BodyParts3D, © The Database Center for Life Science, CC BY-SA 2.1 JP; polohy částí kostí podle Z-Anatomy (CC BY-SA 4.0). Upraveno (výběr, rozdělení kosti křížové a kostrče, malované části, zjednodušení).';
 const io = new NodeIO().registerExtensions([EXTMeshoptCompression, KHRMeshQuantization]).registerDependencies({ 'meshopt.encoder': MeshoptEncoder });
 
 async function writeGlb(list, out, geo) {
@@ -230,18 +284,21 @@ async function writeGlb(list, out, geo) {
   const scene = doc.createScene('skeleton');
   const material = doc.createMaterial('bone').setBaseColorFactor([0.92, 0.89, 0.8, 1]).setRoughnessFactor(0.8);
   for (const m of list) {
-    const { pos, idx } = geo(m);
+    const { pos, idx, labels } = geo(m);
     const prim = doc.createPrimitive()
       .setAttribute('POSITION', doc.createAccessor().setType('VEC3').setArray(pos))
       .setAttribute('NORMAL', doc.createAccessor().setType('VEC3').setArray(vertexNormals(pos, idx)))
       .setIndices(doc.createAccessor().setType('SCALAR').setArray(idx))
       .setMaterial(material);
+    // část kosti na každém vrcholu: index do extras.parts, 255 = žádná
+    if (labels) prim.setAttribute('_PART', doc.createAccessor().setType('SCALAR').setArray(labels));
     const mesh = doc.createMesh(m.name).addPrimitive(prim);
     const extras = { item: m.spec.item ?? null, side: m.spec.side ?? null, groups: m.spec.groups ?? [], fma: m.id };
     for (const k of ['decor', 'part', 'vertebra', 'rib', 'extra', 'ribOf', 'ribGroup']) if (m.spec[k]) extras[k] = m.spec[k];
+    if (m.parts) extras.parts = m.parts;
     scene.addChild(doc.createNode(`${m.spec.item || m.spec.decor}_${m.spec.side || 'M'}_${m.id}`).setMesh(mesh).setExtras(extras));
   }
-  await doc.transform(dedup(), prune(), reorder({ encoder: MeshoptEncoder }), quantize({ quantizePosition: 14, quantizeNormal: 10 }));
+  await doc.transform(dedup(), prune(), reorder({ encoder: MeshoptEncoder }), quantize({ quantizePosition: 14, quantizeNormal: 10, pattern: /^(POSITION|NORMAL)$/ }));
   doc.createExtension(KHRMeshQuantization).setRequired(true);
   doc.createExtension(EXTMeshoptCompression).setRequired(true).setEncoderOptions({ method: EXTMeshoptCompression.EncoderMethod.QUANTIZE });
   doc.getRoot().getAsset().extras = { credits: CREDITS };

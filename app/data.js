@@ -4,6 +4,7 @@
 // groupOf = nadřazená skupina („Patří do:“ na kartě). variants = tvary ze slidů, které test uzná.
 // extra = kost, která na slidech není: v modelu jde ťuknout a ukáže název, v testu nikdy není.
 // Ossa sesamoidea manus (slide 34) v modelu nejsou: žádný ověřený 3D model je neobsahuje.
+// Canalis caroticus (slide 68) zatím není namalovaný: v modelu BodyParts3D není zřetelně vymodelovaný (rozhodnutí 2026-10-25).
 
 export const ITEMS = [
   // ---------- Horní končetina ----------
